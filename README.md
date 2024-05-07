@@ -1,2 +1,3 @@
-# TradingBots
-## Aim:
+# Trading Algorithm
+
+Building Robust Risky Algorithmic Trading Strategies
