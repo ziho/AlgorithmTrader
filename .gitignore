@@ -2,7 +2,7 @@
 data/binance_data/
 
 # keys
-.key
+*.key
 
 .idea
 # Byte-compiled / optimized / DLL files
