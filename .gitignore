@@ -1,3 +1,6 @@
+# Ignore binance data
+data/binance_data/
+
 # keys
 .key
 
