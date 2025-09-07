@@ -1,0 +1,182 @@
+name: ${COMPOSE_PROJECT_NAME:-algorithmtrader}
+
+networks:
+  quant-net:
+    driver: bridge
+
+volumes:
+  influxdb-data:
+  grafana-data:
+  postgres-data:
+  redis-data:
+  loki-data:
+  promtail-data:
+  minio-data:
+
+services:
+  influxdb:
+    image: influxdb:2.7
+    container_name: ${COMPOSE_PROJECT_NAME:-algorithmtrader}-influxdb
+    profiles: ["core"]
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-UTC}
+      - DOCKER_INFLUXDB_INIT_MODE=${INFLUXDB_INIT_MODE:-setup}
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USER:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-change_me}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-quant}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-marketdata}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN:-changeme-token}
+    ports:
+      - "${INFLUXDB_PORT:-8086}:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    networks:
+      - quant-net
+
+  grafana:
+    image: grafana/grafana:10.4.6
+    container_name: ${COMPOSE_PROJECT_NAME:-algorithmtrader}-grafana
+    profiles: ["core"]
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-UTC}
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-change_me}
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - influxdb
+      - loki
+    networks:
+      - quant-net
+
+  postgres:
+    image: postgres:16
+    container_name: ${COMPOSE_PROJECT_NAME:-algorithmtrader}-postgres
+    profiles: ["core"]
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-UTC}
+      - POSTGRES_DB=${POSTGRES_DB:-algodb}
+      - POSTGRES_USER=${POSTGRES_USER:-algouser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - quant-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-algorithmtrader}-redis
+    profiles: ["core"]
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - quant-net
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: ${COMPOSE_PROJECT_NAME:-algorithmtrader}-loki
+    profiles: ["core"]
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - loki-data:/loki
+      - ./config/loki.yml:/etc/loki/loki-config.yml:ro
+    networks:
+      - quant-net
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: ${COMPOSE_PROJECT_NAME:-algorithmtrader}-promtail
+    profiles: ["core"]
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/promtail-config.yml"]
+    ports:
+      - "${PROMTAIL_PORT:-9080}:9080"
+    volumes:
+      - promtail-data:/var/lib/promtail
+      - ./config/promtail.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - loki
+    networks:
+      - quant-net
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-05T00-00-00Z
+    container_name: ${COMPOSE_PROJECT_NAME:-algorithmtrader}-minio
+    profiles: ["optional"]
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-UTC}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-change_me}
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - quant-net
+
+  # --- Application services (placeholders, disabled by default) ---
+  # Enable with: --profile apps
+  # collector-crypto:
+  #   build: ./apps/collectors
+  #   profiles: ["apps"]
+  #   environment:
+  #     - TZ=${TZ:-UTC}
+  #     - INFLUXDB_URL=${INFLUXDB_URL:-http://influxdb:8086}
+  #   depends_on: [influxdb, redis]
+  #   networks: [quant-net]
+
+  # feature-engine:
+  #   build: ./apps/feature_engine
+  #   profiles: ["apps"]
+  #   environment:
+  #     - TZ=${TZ:-UTC}
+  #   networks: [quant-net]
+
+  # backtest-runner:
+  #   build: ./apps/backtest_runner
+  #   profiles: ["apps"]
+  #   networks: [quant-net]
+
+  # strategy-engine:
+  #   build: ./apps/strategy_engine
+  #   profiles: ["apps"]
+  #   depends_on: [redis]
+  #   networks: [quant-net]
+
+  # risk-engine:
+  #   build: ./apps/risk_engine
+  #   profiles: ["apps"]
+  #   depends_on: [redis, postgres]
+  #   networks: [quant-net]
+
+  # execution-router:
+  #   build: ./apps/execution_router
+  #   profiles: ["apps"]
+  #   depends_on: [redis]
+  #   networks: [quant-net]
+
+  # paper-broker:
+  #   build: ./apps/adapters
+  #   profiles: ["apps"]
+  #   networks: [quant-net]
