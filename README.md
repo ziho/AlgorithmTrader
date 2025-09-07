@@ -1,54 +1,83 @@
-AlgorithmTrader (scaffold)
-==========================
+AlgorithmTrader
+===============
 
-Docker-only, research-to-live scaffold for a personal mid/low-frequency trading system. Code runs in containers only (see docs/vibe_rule.md).
+Docker-only, research-to-live scaffold for a personal mid/low-frequency trading system.
+
+Status
+------
+- Core infra up via Docker Compose (Grafana, InfluxDB, Postgres, Redis, Loki, Promtail)
+- Provisioned Grafana data sources for Loki/InfluxDB
+
+Prerequisites
+-------------
+- Linux server (root Docker only per vibe_rule)
+- Docker Engine + Compose plugin
 
 Quick start
 -----------
-1) Copy env template and review ports/users (no real secrets):
+1) Copy env template (placeholders only):
+    ```
 	cp .env.example .env
+    ```
 
 2) Start core infra (InfluxDB, Grafana, Postgres, Redis, Loki, Promtail):
-	docker compose --profile core up -d
+	```
+    sudo docker compose --profile core up -d
+    ```
 
-3) Optional: start MinIO object store:
-	docker compose --profile optional up -d minio
+3) Optional: MinIO:
+    ```
+	sudo docker compose --profile optional up -d minio
+    ```
 
-4) Open Grafana: http://<SERVER_IP>:3000 (use credentials from .env).
+4) Open Grafana: `http://<SERVER_IP>:3000` (use credentials from .env)
 
-Project layout (dirs only)
--------------------------
-- infra/: compose, secrets placeholders, dashboards
-- apps/: services skeleton (collectors, features, strategy, risk, execution, adapters, monitoring, common)
-- data/: lake/ and cache/ (UTC-only data)
-- models/: trained artifacts registry (future)
-- research/: notebooks and playbooks
-- docs/: architecture and guidelines (no secrets)
-- tests/: unit and integration
+Recovery (after reboot)
+-----------------------
+1) Ensure env exists:
+	`cp -n .env.example .env`
 
-Notes
------
-- No local execution. Use Docker.
-- New features default off; enable via profiles/config.
-- Data must be in UTC and time-safe (no look-ahead).
+2) Start core:
+	`sudo docker compose --profile core up -d`
 
-Recover after reboot (core stack)
----------------------------------
-1) Ensure env exists (placeholders OK):
-	cp -n .env.example .env
+3) Check:
+	`sudo docker compose ps`
 
-2) Start core services:
-	sudo docker compose --profile core up -d
-
-3) Check statuses:
-	sudo docker compose ps
-
-4) Health checks (replace <SERVER_IP> if not localhost):
-	curl -sSf http://<SERVER_IP>:3000/api/health   # Grafana
+4) Health:
+	```
+    curl -sSf http://<SERVER_IP>:3000/api/health   # Grafana
 	curl -sSf http://<SERVER_IP>:8086/health       # InfluxDB
 	curl -sSf http://<SERVER_IP>:3100/ready        # Loki
+    ```
 
-5) Useful ops:
-	sudo docker compose logs -f loki               # tail logs
-	sudo docker compose restart loki               # restart one
-	sudo docker compose --profile core down        # stop core
+Operations
+----------
+- Tail logs: `sudo docker compose logs -f loki`
+- Restart one: `sudo docker compose restart grafana`
+- Stop core: `sudo docker compose --profile core down`
+
+Configuration
+-------------
+- Edit `.env` (copied from `.env.example`). No real secrets in repo.
+- Grafana datasources provisioned from `config/grafana/provisioning`.
+- `Loki/Promtail` configs in `config/` (UTC expected).
+
+Project structure
+-----------------
+- See `documents/dev_guideline/folders_overview.md` for folder purposes.
+- `apps/`, `infra/`, `data/`, `models/`, `research/`, `docs/`, `tests/` scaffolded per `docs/Overall.md`.
+
+Profiles
+--------
+- core: Grafana, InfluxDB, Postgres, Redis, Loki, Promtail
+- optional: MinIO
+- apps: application services (placeholders, disabled by default)
+
+Policy
+------
+- No local runs. Docker only. Data is UTC; no look-ahead.
+- New features off by default; enable via config/profiles.
+
+License
+-------
+See LICENSE.
