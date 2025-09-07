@@ -1,0 +1,168 @@
+# =============================================================================
+# 策略引擎配置
+# 定义策略参数、回测设置和风险控制
+# =============================================================================
+
+# 全局策略设置
+global:
+  # 默认初始资金
+  initial_capital: 10000.0
+  
+  # 交易费用(比例)
+  trading_fee: 0.001
+  
+  # 滑点模型
+  slippage:
+    market_order: 0.0005  # 市价单滑点
+    limit_order: 0.0001   # 限价单滑点
+  
+  # 时区设置
+  timezone: "UTC"
+
+# 双均线策略配置
+moving_average_strategy:
+  # 策略开关
+  enabled: true
+  
+  # 策略参数
+  parameters:
+    short_window: 5      # 短期均线周期
+    long_window: 20      # 长期均线周期
+    min_strength: 0.02   # 最小信号强度(2%)
+    
+  # 位置管理
+  position_sizing:
+    method: "fixed_capital"  # fixed_capital | fixed_quantity | volatility_target
+    allocation: 1.0          # 资金分配比例
+    
+  # 信号过滤
+  signal_filters:
+    # 时间过滤器
+    time_filter:
+      enabled: false
+      allowed_hours: [9, 10, 11, 13, 14, 15]  # 允许交易的小时
+    
+    # 波动率过滤器
+    volatility_filter:
+      enabled: false
+      min_volatility: 0.01   # 最小波动率
+      max_volatility: 0.10   # 最大波动率
+      
+  # 策略特定风控
+  risk_controls:
+    max_position_size: 0.95     # 最大仓位比例
+    stop_loss: null             # 止损比例(null表示不启用)
+    take_profit: null           # 止盈比例
+    max_drawdown: 0.15          # 最大回撤限制
+
+# RSI策略配置(预留)
+rsi_strategy:
+  enabled: false
+  parameters:
+    period: 14
+    oversold_threshold: 30
+    overbought_threshold: 70
+  position_sizing:
+    method: "fixed_capital"
+    allocation: 0.5
+
+# 回测配置
+backtest:
+  # 回测时间范围
+  date_range:
+    start_date: "2022-01-01"
+    end_date: "2024-12-31"
+  
+  # 回测数据配置
+  data_config:
+    symbols: ["BTCUSDT", "ETHUSDT"]
+    timeframe: "1m"
+    
+  # 交易成本模型
+  transaction_costs:
+    commission_rate: 0.001      # 佣金费率
+    minimum_commission: 0.0     # 最小佣金
+    market_impact:
+      enabled: false
+      impact_coefficient: 0.1   # 市场冲击系数
+      
+  # 回测输出
+  output:
+    save_trades: true           # 保存交易记录
+    save_equity_curve: true     # 保存权益曲线
+    save_signals: true          # 保存信号记录
+    export_format: "json"       # 导出格式: json|csv|parquet
+
+# 策略组合配置
+portfolio:
+  # 多策略权重分配
+  strategy_weights:
+    moving_average_strategy: 1.0
+    rsi_strategy: 0.0
+    
+  # 再平衡频率
+  rebalance_frequency: "1D"     # 1D|1H|30m
+  
+  # 组合风控
+  portfolio_risk:
+    max_correlation: 0.8        # 最大相关性
+    max_concentration: 0.6      # 最大集中度
+    diversification_penalty: 0.1
+
+# 实时交易配置
+live_trading:
+  # 实时交易开关
+  enabled: false
+  
+  # 信号执行延迟(秒)
+  execution_delay: 1
+  
+  # 订单配置
+  order_config:
+    order_type: "market"        # market|limit
+    time_in_force: "GTC"        # GTC|IOC|FOK
+    
+  # 实时风控
+  live_risk:
+    max_orders_per_minute: 10
+    position_check_interval: 30  # 秒
+    
+# 性能分析配置
+performance:
+  # 基准配置
+  benchmark:
+    symbol: "BTCUSDT"
+    type: "buy_and_hold"
+    
+  # 分析指标
+  metrics:
+    - "total_return"
+    - "annualized_return"
+    - "sharpe_ratio"
+    - "sortino_ratio" 
+    - "max_drawdown"
+    - "win_rate"
+    - "profit_factor"
+    - "calmar_ratio"
+    
+  # 分析周期
+  analysis_periods:
+    - "daily"
+    - "monthly"
+    - "yearly"
+
+# 日志和监控
+logging:
+  level: "INFO"
+  
+  # InfluxDB 指标字段
+  metrics_fields:
+    - "strategy_signals_generated"
+    - "trades_executed"
+    - "portfolio_value"
+    - "unrealized_pnl"
+    - "realized_pnl"
+    - "drawdown_current"
+    - "sharpe_ratio_rolling"
+    - "win_rate_rolling"
+    - "execution_latency_ms"

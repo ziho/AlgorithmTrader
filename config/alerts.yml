@@ -1,0 +1,366 @@
+# =============================================================================
+# 告警配置
+# 定义告警规则、通知渠道和处理策略，使用 Bark 进行消息推送
+# =============================================================================
+
+# 全局告警设置
+global:
+  # 告警开关
+  enabled: true
+  
+  # 告警评估间隔(秒)
+  evaluation_interval: 60
+  
+  # 告警抑制时间(秒) - 同类告警的最小间隔
+  suppression_time: 300
+  
+  # 时区设置
+  timezone: "UTC"
+
+# Bark 推送配置
+bark:
+  # Bark 服务配置
+  server:
+    # Bark 服务地址 (需要在实际部署时配置)
+    base_url: "https://api.day.app"
+    # 或自建服务器: "http://your-bark-server.com"
+    
+  # 推送密钥 (需要在实际部署时配置真实密钥)
+  push_key: "4ud8K4qQADMvYHf9iYGRAo"
+  
+  # 推送配置
+  default_config:
+    # 推送图标
+    icon: "https://openmoji.org/data/color/svg/1F4B8.svg"
+    
+    # 推送分组
+    group: "AlgorithmTrader"
+    
+    # 推送声音
+    sound: "default"
+    
+    # 时效性通知级别
+    level: "active"  # active|timeSensitive|passive
+    
+  # 不同严重级别的推送配置
+  severity_config:
+    critical:
+      sound: "alarm"
+      level: "critical"  # 关键告警，忽略勿扰模式
+      call: true         # 持续响铃30秒
+    high:
+      sound: "horn"
+      level: "timeSensitive"  # 时效性通知
+    medium:
+      sound: "bell"
+      level: "active"
+    low:
+      sound: "default"
+      level: "passive"
+
+# 告警规则定义
+alert_rules:
+  # 系统级告警
+  system_alerts:
+    # CPU使用率告警
+    cpu_usage_high:
+      condition: "cpu_usage_percent > 80"
+      severity: "high"
+      message: "CPU使用率过高: {value}%"
+      evaluation_period: 300    # 持续时间(秒)
+      recovery_threshold: 70    # 恢复阈值
+      
+    cpu_usage_critical:
+      condition: "cpu_usage_percent > 90"
+      severity: "critical"
+      message: "CPU使用率严重: {value}%"
+      evaluation_period: 180
+      recovery_threshold: 85
+      
+    # 内存使用率告警
+    memory_usage_high:
+      condition: "memory_usage_percent > 85"
+      severity: "high"
+      message: "内存使用率过高: {value}%"
+      evaluation_period: 300
+      recovery_threshold: 75
+      
+    memory_usage_critical:
+      condition: "memory_usage_percent > 95"
+      severity: "critical"
+      message: "内存使用率严重: {value}%"
+      evaluation_period: 120
+      recovery_threshold: 90
+      
+    # 磁盘使用率告警
+    disk_usage_high:
+      condition: "disk_usage_percent > 85"
+      severity: "medium"
+      message: "磁盘使用率过高: {value}%"
+      evaluation_period: 600
+      recovery_threshold: 80
+      
+    disk_usage_critical:
+      condition: "disk_usage_percent > 95"
+      severity: "critical"
+      message: "磁盘空间不足: {value}%"
+      evaluation_period: 300
+      recovery_threshold: 90
+
+  # 服务级告警
+  service_alerts:
+    # InfluxDB服务告警
+    influxdb_down:
+      condition: "influxdb_status != 'healthy'"
+      severity: "critical"
+      message: "InfluxDB服务异常: {error_message}"
+      evaluation_period: 120
+      
+    influxdb_slow:
+      condition: "influxdb_response_time > 5000"
+      severity: "high"
+      message: "InfluxDB响应缓慢: {value}ms"
+      evaluation_period: 300
+      
+    # Redis服务告警
+    redis_down:
+      condition: "redis_status != 'healthy'"
+      severity: "high"
+      message: "Redis服务异常: {error_message}"
+      evaluation_period: 180
+      
+    # PostgreSQL服务告警
+    postgres_down:
+      condition: "postgres_status != 'healthy'"
+      severity: "high"
+      message: "PostgreSQL服务异常: {error_message}"
+      evaluation_period: 180
+      
+    postgres_connections_high:
+      condition: "postgres_active_connections > 40"
+      severity: "medium"
+      message: "PostgreSQL连接数过高: {value}"
+      evaluation_period: 600
+
+  # 数据质量告警
+  data_quality_alerts:
+    # 数据延迟告警
+    data_stale:
+      condition: "data_age_minutes > 60"
+      severity: "high"
+      message: "市场数据延迟: {value}分钟未更新"
+      evaluation_period: 300
+      
+    data_very_stale:
+      condition: "data_age_minutes > 180"
+      severity: "critical"
+      message: "市场数据严重延迟: {value}分钟未更新"
+      evaluation_period: 300
+      
+    # 数据缺失告警
+    data_missing:
+      condition: "missing_data_percent > 10"
+      severity: "medium"
+      message: "数据缺失率过高: {value}%"
+      evaluation_period: 1800
+      
+    # 数据异常告警
+    data_anomaly:
+      condition: "price_volatility > 0.2"
+      severity: "medium"
+      message: "{symbol}价格异常波动: {value}%"
+      evaluation_period: 300
+
+  # 应用级告警
+  application_alerts:
+    # 策略引擎告警
+    strategy_errors:
+      condition: "strategy_error_rate > 0.05"
+      severity: "high"
+      message: "策略引擎错误率过高: {value}%"
+      evaluation_period: 600
+      
+    backtest_failed:
+      condition: "backtest_status == 'failed'"
+      severity: "medium"
+      message: "回测任务失败: {strategy_name}"
+      evaluation_period: 0
+      
+    # 数据采集告警
+    collector_failed:
+      condition: "collector_status == 'failed'"
+      severity: "high"
+      message: "数据采集器异常: {collector_name}"
+      evaluation_period: 300
+      
+    download_slow:
+      condition: "download_speed < 100"
+      severity: "low"
+      message: "数据下载速度缓慢: {value} records/sec"
+      evaluation_period: 1800
+
+  # 业务级告警
+  business_alerts:
+    # 交易告警
+    execution_latency_high:
+      condition: "execution_latency_ms > 1000"
+      severity: "medium"
+      message: "交易执行延迟过高: {value}ms"
+      evaluation_period: 300
+      
+    # 风险告警
+    portfolio_drawdown_high:
+      condition: "drawdown_percent > 10"
+      severity: "high"
+      message: "组合回撤过高: {value}%"
+      evaluation_period: 300
+      
+    portfolio_drawdown_critical:
+      condition: "drawdown_percent > 15"
+      severity: "critical"
+      message: "组合回撤严重: {value}%"
+      evaluation_period: 180
+      
+    risk_score_high:
+      condition: "risk_score > 0.8"
+      severity: "medium"
+      message: "风险评分过高: {value}"
+      evaluation_period: 600
+      
+    # 资金告警
+    capital_low:
+      condition: "available_capital_ratio < 0.1"
+      severity: "high"
+      message: "可用资金不足: {value}%"
+      evaluation_period: 300
+
+# 告警通知策略
+notification_strategy:
+  # 通知渠道优先级
+  channels:
+    primary: "bark"
+    backup: "log"
+    
+  # 不同严重级别的通知策略
+  severity_routing:
+    critical:
+      channels: ["bark"]
+      immediate: true
+      max_frequency: "1/5m"     # 最多5分钟一次
+      escalation_time: 900      # 15分钟后升级
+      
+    high:
+      channels: ["bark"]
+      immediate: true
+      max_frequency: "1/10m"
+      escalation_time: 1800
+      
+    medium:
+      channels: ["bark"]
+      immediate: false
+      batch_time: 300           # 5分钟批量发送
+      max_frequency: "1/30m"
+      
+    low:
+      channels: ["bark"]
+      immediate: false
+      batch_time: 1800          # 30分钟批量发送
+      max_frequency: "1/2h"
+
+# 告警抑制规则
+suppression_rules:
+  # 相同告警抑制
+  duplicate_suppression:
+    enabled: true
+    time_window: 300            # 5分钟内相同告警只发送一次
+    
+  # 依赖关系抑制
+  dependency_suppression:
+    enabled: true
+    rules:
+      # 如果InfluxDB down，则抑制数据相关告警
+      - parent: "influxdb_down"
+        children: ["data_stale", "data_missing"]
+        
+      # 如果系统CPU过高，则抑制应用性能告警
+      - parent: "cpu_usage_critical"
+        children: ["strategy_errors", "download_slow"]
+
+# 告警恢复通知
+recovery_notifications:
+  enabled: true
+  
+  # 恢复通知策略
+  recovery_strategy:
+    critical: true              # 严重告警恢复时通知
+    high: true                  # 高级告警恢复时通知
+    medium: false               # 中级告警恢复时不通知
+    low: false                  # 低级告警恢复时不通知
+    
+  # 恢复消息模板
+  recovery_message: "✅ 告警恢复: {alert_name} - {recovery_time}"
+
+# 告警历史和统计
+alert_history:
+  # 历史记录保留期(天)
+  retention_days: 90
+  
+  # 统计报告
+  statistics:
+    enabled: true
+    report_interval: "daily"    # daily|weekly|monthly
+    
+    # 统计指标
+    metrics:
+      - total_alerts
+      - alerts_by_severity
+      - alerts_by_component
+      - average_resolution_time
+      - false_positive_rate
+
+# 测试和维护
+testing:
+  # 告警测试
+  test_alerts:
+    enabled: true
+    test_schedule: "0 9 * * 1"  # 每周一9点测试
+    test_message: "🧪 AlgorithmTrader告警系统测试"
+    
+  # 健康检查
+  health_check:
+    bark_connectivity: true     # 检查Bark连通性
+    check_interval: 3600        # 每小时检查一次
+
+# 日志和监控
+logging:
+  level: "INFO"
+  
+  # InfluxDB 指标字段
+  metrics_fields:
+    - "alerts_generated_total"
+    - "alerts_sent_total"
+    - "alerts_failed_total"
+    - "alert_resolution_time_seconds"
+    - "suppressed_alerts_total"
+    - "bark_api_calls_total"
+    - "bark_api_errors_total"
+    - "notification_latency_ms"
+
+# 示例Bark消息格式
+message_templates:
+  default: |
+    🚨 {severity_emoji} {alert_name}
+    
+    📊 监控对象: {component}
+    📍 严重级别: {severity}
+    ⏰ 触发时间: {trigger_time}
+    📝 详细信息: {message}
+    
+    🔗 查看详情: {dashboard_url}
+    
+    # 严重级别对应的emoji
+    severity_emojis:
+      critical: "🔴"
+      high: "🟠" 
+      medium: "🟡"
+      low: "🔵"
