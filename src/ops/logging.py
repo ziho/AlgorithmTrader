@@ -8,9 +8,9 @@
 """
 
 import logging
+import logging.handlers
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -20,15 +20,15 @@ from src.core.config import get_settings
 
 
 def add_timestamp(
-    logger: logging.Logger, method_name: str, event_dict: dict[str, Any]
+    _logger: logging.Logger, _method_name: str, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
     """添加 ISO 格式 UTC 时间戳"""
-    event_dict["timestamp"] = datetime.now(timezone.utc).isoformat()
+    event_dict["timestamp"] = datetime.now(UTC).isoformat()
     return event_dict
 
 
 def add_service_info(
-    logger: logging.Logger, method_name: str, event_dict: dict[str, Any]
+    _logger: logging.Logger, _method_name: str, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
     """添加服务信息"""
     settings = get_settings()
@@ -145,7 +145,3 @@ def get_logger(name: str | None = None) -> structlog.BoundLogger:
         structlog.BoundLogger 实例
     """
     return structlog.get_logger(name)
-
-
-# 导入 logging.handlers 用于 RotatingFileHandler
-import logging.handlers

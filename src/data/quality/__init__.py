@@ -10,8 +10,8 @@
 
 from src.data.quality.validators import (
     DataQualityChecker,
-    QualityReport,
     QualityIssue,
+    QualityReport,
     check_all_data_quality,
 )
 

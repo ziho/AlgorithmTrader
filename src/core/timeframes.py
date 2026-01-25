@@ -11,7 +11,7 @@
 - 支持不同交易所格式转换
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 
@@ -63,15 +63,12 @@ class Timeframe(str, Enum):
             取整后的时间
         """
         # 确保是 UTC 时间
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
+        dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
         # 按秒数取整
         timestamp = dt.timestamp()
         floored_ts = (timestamp // self.seconds) * self.seconds
-        return datetime.fromtimestamp(floored_ts, tz=timezone.utc)
+        return datetime.fromtimestamp(floored_ts, tz=UTC)
 
     def ceil(self, dt: datetime) -> datetime:
         """

@@ -14,7 +14,7 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -68,7 +68,7 @@ class Event:
     """事件基类"""
 
     event_id: UUID = field(default_factory=uuid4)
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         """转换为字典"""
@@ -94,7 +94,7 @@ class BarEvent(Event):
     low: Decimal = Decimal("0")
     close: Decimal = Decimal("0")
     volume: Decimal = Decimal("0")
-    bar_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    bar_time: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         """转换为字典"""

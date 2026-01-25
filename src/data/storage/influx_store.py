@@ -12,18 +12,17 @@ InfluxDB Store - 实时数据存储与监控指标
 - Fields: open, high, low, close, volume, etc.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Optional
-import asyncio
+from typing import Any
 
+import pandas as pd
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import ASYNCHRONOUS, SYNCHRONOUS
-import pandas as pd
 
+from src.core.config import get_settings
 from src.core.instruments import Symbol
 from src.core.timeframes import Timeframe
-from src.core.config import get_settings
 from src.ops.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,21 +30,21 @@ logger = get_logger(__name__)
 
 class InfluxStore:
     """InfluxDB 实时数据存储"""
-    
+
     # 默认保留策略（天）
     DEFAULT_RETENTION_DAYS = 90
-    
+
     def __init__(
         self,
-        url: Optional[str] = None,
-        token: Optional[str] = None,
-        org: Optional[str] = None,
-        bucket: Optional[str] = None,
+        url: str | None = None,
+        token: str | None = None,
+        org: str | None = None,
+        bucket: str | None = None,
         async_write: bool = True,
     ):
         """
         初始化 InfluxDB Store
-        
+
         Args:
             url: InfluxDB URL
             token: 认证 Token
@@ -54,26 +53,26 @@ class InfluxStore:
             async_write: 是否异步写入
         """
         settings = get_settings()
-        
+
         self.url = url or settings.influxdb.url
         self.token = token or settings.influxdb.token.get_secret_value()
         self.org = org or settings.influxdb.org
         self.bucket = bucket or settings.influxdb.bucket
-        
+
         # 创建客户端
         self._client = InfluxDBClient(
             url=self.url,
             token=self.token,
             org=self.org,
         )
-        
+
         # 写入 API（支持同步和异步）
         write_options = ASYNCHRONOUS if async_write else SYNCHRONOUS
         self._write_api = self._client.write_api(write_options=write_options)
-        
+
         # 查询 API
         self._query_api = self._client.query_api()
-        
+
         logger.info(
             "influx_store_initialized",
             url=self.url,
@@ -81,7 +80,7 @@ class InfluxStore:
             bucket=self.bucket,
             async_write=async_write,
         )
-    
+
     def write_ohlcv(
         self,
         symbol: Symbol,
@@ -90,28 +89,28 @@ class InfluxStore:
     ) -> int:
         """
         写入 OHLCV 数据
-        
+
         Args:
             symbol: 交易对
             timeframe: 时间框架
             df: OHLCV DataFrame，需包含 timestamp, open, high, low, close, volume
-            
+
         Returns:
             写入的点数
         """
         if df.empty:
             return 0
-        
+
         points = []
-        
+
         for _, row in df.iterrows():
             # 处理时间戳
             ts = row["timestamp"]
             if isinstance(ts, pd.Timestamp):
                 ts = ts.to_pydatetime()
             if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            
+                ts = ts.replace(tzinfo=UTC)
+
             # 构建数据点
             point = (
                 Point("ohlcv")
@@ -126,19 +125,19 @@ class InfluxStore:
                 .time(ts, WritePrecision.S)
             )
             points.append(point)
-        
+
         # 批量写入
         self._write_api.write(bucket=self.bucket, record=points)
-        
+
         logger.debug(
             "influx_ohlcv_written",
             symbol=str(symbol),
             timeframe=timeframe.value,
             points=len(points),
         )
-        
+
         return len(points)
-    
+
     def write_bar(
         self,
         symbol: Symbol,
@@ -152,7 +151,7 @@ class InfluxStore:
     ):
         """
         写入单根 K 线
-        
+
         Args:
             symbol: 交易对
             timeframe: 时间框架
@@ -164,8 +163,8 @@ class InfluxStore:
             volume: 成交量
         """
         if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
-        
+            timestamp = timestamp.replace(tzinfo=UTC)
+
         point = (
             Point("ohlcv")
             .tag("exchange", symbol.exchange.value)
@@ -178,19 +177,19 @@ class InfluxStore:
             .field("volume", float(volume))
             .time(timestamp, WritePrecision.S)
         )
-        
+
         self._write_api.write(bucket=self.bucket, record=point)
-    
+
     def write_metric(
         self,
         measurement: str,
         tags: dict[str, str],
         fields: dict[str, float | int | str | bool],
-        timestamp: Optional[datetime] = None,
+        timestamp: datetime | None = None,
     ):
         """
         写入通用指标
-        
+
         Args:
             measurement: 测量名称
             tags: 标签
@@ -198,24 +197,24 @@ class InfluxStore:
             timestamp: 时间戳，默认为当前时间
         """
         if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.now(UTC)
         elif timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
-        
+            timestamp = timestamp.replace(tzinfo=UTC)
+
         point = Point(measurement)
-        
+
         for key, value in tags.items():
             point = point.tag(key, value)
-        
+
         for key, value in fields.items():
             if isinstance(value, Decimal):
                 value = float(value)
             point = point.field(key, value)
-        
+
         point = point.time(timestamp, WritePrecision.S)
-        
+
         self._write_api.write(bucket=self.bucket, record=point)
-    
+
     def write_trade_signal(
         self,
         symbol: Symbol,
@@ -223,12 +222,12 @@ class InfluxStore:
         price: float,
         quantity: float,
         strategy: str,
-        reason: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
+        reason: str | None = None,
+        timestamp: datetime | None = None,
     ):
         """
         写入交易信号
-        
+
         Args:
             symbol: 交易对
             signal_type: 信号类型
@@ -244,27 +243,27 @@ class InfluxStore:
             "signal_type": signal_type,
             "strategy": strategy,
         }
-        
+
         fields: dict[str, float | int | str | bool] = {
             "price": float(price),
             "quantity": float(quantity),
         }
         if reason:
             fields["reason"] = reason
-        
+
         self.write_metric("signals", tags, fields, timestamp)
-    
+
     def write_risk_metric(
         self,
         metric_name: str,
         value: float,
-        symbol: Optional[Symbol] = None,
-        strategy: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
+        symbol: Symbol | None = None,
+        strategy: str | None = None,
+        timestamp: datetime | None = None,
     ):
         """
         写入风控指标
-        
+
         Args:
             metric_name: 指标名称（如 drawdown, leverage, exposure）
             value: 指标值
@@ -273,45 +272,45 @@ class InfluxStore:
             timestamp: 时间戳
         """
         tags: dict[str, str] = {"metric": metric_name}
-        
+
         if symbol:
             tags["exchange"] = symbol.exchange.value
             tags["symbol"] = f"{symbol.base}/{symbol.quote}"
-        
+
         if strategy:
             tags["strategy"] = strategy
-        
+
         fields: dict[str, float | int | str | bool] = {"value": float(value)}
-        
+
         self.write_metric("risk_metrics", tags, fields, timestamp)
-    
+
     def query_ohlcv(
         self,
         symbol: Symbol,
         timeframe: Timeframe,
         start: datetime,
-        end: Optional[datetime] = None,
+        end: datetime | None = None,
     ) -> pd.DataFrame:
         """
         查询 OHLCV 数据
-        
+
         Args:
             symbol: 交易对
             timeframe: 时间框架
             start: 开始时间
             end: 结束时间，默认为当前时间
-            
+
         Returns:
             OHLCV DataFrame
         """
         if end is None:
-            end = datetime.now(timezone.utc)
-        
+            end = datetime.now(UTC)
+
         if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
+            start = start.replace(tzinfo=UTC)
         if end.tzinfo is None:
-            end = end.replace(tzinfo=timezone.utc)
-        
+            end = end.replace(tzinfo=UTC)
+
         query = f'''
         from(bucket: "{self.bucket}")
             |> range(start: {start.isoformat()}, stop: {end.isoformat()})
@@ -322,43 +321,47 @@ class InfluxStore:
             |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
             |> sort(columns: ["_time"])
         '''
-        
+
         try:
             result = self._query_api.query_data_frame(query)
-            
+
             if result.empty:
-                return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
-            
+                return pd.DataFrame(
+                    columns=["timestamp", "open", "high", "low", "close", "volume"]
+                )
+
             # 重命名列
             result = result.rename(columns={"_time": "timestamp"})
-            
+
             # 选择需要的列
             cols = ["timestamp", "open", "high", "low", "close", "volume"]
             available_cols = [c for c in cols if c in result.columns]
             result = result[available_cols]
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(
                 "influx_query_failed",
                 error=str(e),
                 symbol=str(symbol),
             )
-            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
-    
+            return pd.DataFrame(
+                columns=["timestamp", "open", "high", "low", "close", "volume"]
+            )
+
     def query_latest_bar(
         self,
         symbol: Symbol,
         timeframe: Timeframe,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         查询最新一根 K 线
-        
+
         Args:
             symbol: 交易对
             timeframe: 时间框架
-            
+
         Returns:
             最新 K 线数据或 None
         """
@@ -373,13 +376,13 @@ class InfluxStore:
             |> sort(columns: ["_time"], desc: true)
             |> limit(n: 1)
         '''
-        
+
         try:
             result = self._query_api.query_data_frame(query)
-            
+
             if result.empty:
                 return None
-            
+
             row = result.iloc[0]
             return {
                 "timestamp": row["_time"],
@@ -389,7 +392,7 @@ class InfluxStore:
                 "close": row.get("close"),
                 "volume": row.get("volume"),
             }
-            
+
         except Exception as e:
             logger.error(
                 "influx_query_latest_failed",
@@ -397,11 +400,11 @@ class InfluxStore:
                 symbol=str(symbol),
             )
             return None
-    
+
     def health_check(self) -> bool:
         """
         检查 InfluxDB 连接状态
-        
+
         Returns:
             是否健康
         """
@@ -411,18 +414,18 @@ class InfluxStore:
         except Exception as e:
             logger.error("influx_health_check_failed", error=str(e))
             return False
-    
+
     def flush(self):
         """刷新写入缓冲区"""
         self._write_api.flush()
-    
+
     def close(self):
         """关闭连接"""
         self._write_api.close()
         self._client.close()
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()

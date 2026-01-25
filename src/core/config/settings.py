@@ -7,7 +7,6 @@
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -80,7 +79,9 @@ class Settings(BaseSettings):
 
     # 数据目录
     data_dir: Path = Field(default=Path("./data"), description="数据根目录")
-    parquet_dir: Path = Field(default=Path("./data/parquet"), description="Parquet 目录")
+    parquet_dir: Path = Field(
+        default=Path("./data/parquet"), description="Parquet 目录"
+    )
     log_dir: Path = Field(default=Path("./logs"), description="日志目录")
 
     # 日志

@@ -10,8 +10,7 @@ OKX 数据连接器
 - 私有接口 (账户/下单) 需要 API key
 """
 
-import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -19,7 +18,7 @@ import ccxt.async_support as ccxt
 import pandas as pd
 
 from src.core.config import get_settings
-from src.core.instruments import Exchange, Symbol
+from src.core.instruments import Symbol
 from src.core.timeframes import Timeframe
 
 
@@ -113,16 +112,10 @@ class OKXConnector:
         exchange = await self._get_exchange()
 
         # 转换 symbol
-        if isinstance(symbol, Symbol):
-            ccxt_symbol = symbol.ccxt
-        else:
-            ccxt_symbol = symbol
+        ccxt_symbol = symbol.ccxt if isinstance(symbol, Symbol) else symbol
 
         # 转换 timeframe
-        if isinstance(timeframe, Timeframe):
-            tf_str = timeframe.to_ccxt()
-        else:
-            tf_str = timeframe
+        tf_str = timeframe.to_ccxt() if isinstance(timeframe, Timeframe) else timeframe
 
         # 转换时间
         since_ts = int(since.timestamp() * 1000) if since else None
@@ -146,7 +139,9 @@ class OKXConnector:
 
         # 转换为 Decimal 精度
         for col in ["open", "high", "low", "close", "volume"]:
-            df[col] = df[col].apply(lambda x: Decimal(str(x)) if pd.notna(x) else Decimal("0"))
+            df[col] = df[col].apply(
+                lambda x: Decimal(str(x)) if pd.notna(x) else Decimal("0")
+            )
 
         return df
 
@@ -162,10 +157,7 @@ class OKXConnector:
         """
         exchange = await self._get_exchange()
 
-        if isinstance(symbol, Symbol):
-            ccxt_symbol = symbol.ccxt
-        else:
-            ccxt_symbol = symbol
+        ccxt_symbol = symbol.ccxt if isinstance(symbol, Symbol) else symbol
 
         return await exchange.fetch_ticker(ccxt_symbol)
 

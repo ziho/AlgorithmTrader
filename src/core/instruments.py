@@ -96,7 +96,9 @@ class Symbol:
             Symbol 实例
         """
         if ":" not in symbol_str:
-            raise ValueError(f"Invalid internal format: {symbol_str}, expected EXCHANGE:BASE/QUOTE")
+            raise ValueError(
+                f"Invalid internal format: {symbol_str}, expected EXCHANGE:BASE/QUOTE"
+            )
 
         exchange_str, pair = symbol_str.split(":", 1)
 
@@ -107,8 +109,8 @@ class Symbol:
 
         try:
             exchange = Exchange(exchange_str.upper())
-        except ValueError:
-            raise ValueError(f"Unknown exchange: {exchange_str}")
+        except ValueError as err:
+            raise ValueError(f"Unknown exchange: {exchange_str}") from err
 
         return cls(exchange=exchange, base=base.upper(), quote=quote.upper())
 
@@ -138,7 +140,9 @@ class Symbol:
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Symbol):
-            return self.internal == other.internal and self.asset_type == other.asset_type
+            return (
+                self.internal == other.internal and self.asset_type == other.asset_type
+            )
         return False
 
     def __hash__(self) -> int:
