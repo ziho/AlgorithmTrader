@@ -1,0 +1,141 @@
+# AlgorithmTrader Docker Compose
+# 基础设施服务: InfluxDB + Grafana + Loki (可选)
+
+services:
+  # ============================================
+  # InfluxDB - 时序数据库
+  # ============================================
+  influxdb:
+    image: influxdb:2.7
+    container_name: algorithmtrader-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=algorithmtrader123
+      - DOCKER_INFLUXDB_INIT_ORG=algorithmtrader
+      - DOCKER_INFLUXDB_INIT_BUCKET=trading
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=algorithmtrader-dev-token
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - algorithmtrader-net
+
+  # ============================================
+  # Grafana - 监控面板
+  # ============================================
+  grafana:
+    image: grafana/grafana:10.3.1
+    container_name: algorithmtrader-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=algorithmtrader123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # 配置 InfluxDB 数据源
+      - GF_INSTALL_PLUGINS=grafana-clock-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - influxdb
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - algorithmtrader-net
+
+  # ============================================
+  # Loki - 日志聚合 (可选)
+  # ============================================
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: algorithmtrader-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki-data:/loki
+      - ./infra/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - logging  # 使用 --profile logging 启用
+
+  # ============================================
+  # Promtail - 日志采集 (可选)
+  # ============================================
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: algorithmtrader-promtail
+    restart: unless-stopped
+    volumes:
+      - ./logs:/var/log/algorithmtrader:ro
+      - ./infra/promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - loki
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - logging  # 使用 --profile logging 启用
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  algorithmtrader-net:
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  influxdb-data:
+    driver: local
+  influxdb-config:
+    driver: local
+  grafana-data:
+    driver: local
+  loki-data:
+    driver: local
