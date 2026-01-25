@@ -1,0 +1,201 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "algorithmtrader"
+version = "0.1.0"
+description = "个人中低频量化交易系统"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "ziho" }
+]
+keywords = ["quantitative", "trading", "crypto", "stocks", "backtest"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    # 交易所接口
+    "ccxt>=4.0.0",
+    
+    # 数据处理
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "polars>=0.20.0",
+    
+    # 数据存储
+    "influxdb-client>=1.40.0",
+    "pyarrow>=15.0.0",
+    "duckdb>=0.10.0",
+    
+    # 通知
+    "python-telegram-bot>=20.0",
+    
+    # 调度
+    "apscheduler>=3.10.0",
+    
+    # 配置与环境
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    
+    # 异步
+    "aiohttp>=3.9.0",
+    
+    # 日志
+    "structlog>=24.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # 测试
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    
+    # 代码质量
+    "ruff>=0.2.0",
+    "mypy>=1.8.0",
+    
+    # 类型存根
+    "pandas-stubs",
+    "types-python-dateutil",
+]
+
+research = [
+    # Jupyter
+    "jupyter>=1.0.0",
+    "jupyterlab>=4.0.0",
+    
+    # 可视化
+    "matplotlib>=3.8.0",
+    "plotly>=5.18.0",
+    
+    # Qlib (可选)
+    # "pyqlib>=0.9.0",
+]
+
+ibkr = [
+    # Interactive Brokers
+    "ib_insync>=0.9.86",
+]
+
+all = [
+    "algorithmtrader[dev,research,ibkr]",
+]
+
+[project.urls]
+Homepage = "https://github.com/ziho/AlgorithmTrader"
+Repository = "https://github.com/ziho/AlgorithmTrader"
+Issues = "https://github.com/ziho/AlgorithmTrader/issues"
+
+[project.scripts]
+collector = "services.collector.main:main"
+trader = "services.trader.main:main"
+scheduler = "services.scheduler.main:main"
+backtest = "services.backtest_runner.main:main"
+
+# ============================================
+# Ruff 配置
+# ============================================
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ============================================
+# Mypy 配置
+# ============================================
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = [
+    "ccxt.*",
+    "influxdb_client.*",
+    "telegram.*",
+    "apscheduler.*",
+]
+ignore_missing_imports = true
+
+# ============================================
+# Pytest 配置
+# ============================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+]
+
+# ============================================
+# Coverage 配置
+# ============================================
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
