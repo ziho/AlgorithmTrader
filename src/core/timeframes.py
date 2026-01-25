@@ -13,7 +13,6 @@
 
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import ClassVar
 
 
 class Timeframe(str, Enum):
@@ -28,22 +27,20 @@ class Timeframe(str, Enum):
     D1 = "1d"  # 日线
     W1 = "1w"  # 周线
 
-    # 时间框架对应的秒数
-    _SECONDS: ClassVar[dict[str, int]] = {
-        "1m": 60,
-        "5m": 300,
-        "15m": 900,
-        "30m": 1800,
-        "1h": 3600,
-        "4h": 14400,
-        "1d": 86400,
-        "1w": 604800,
-    }
-
     @property
     def seconds(self) -> int:
         """返回时间框架对应的秒数"""
-        return self._SECONDS[self.value]
+        _seconds_map = {
+            "1m": 60,
+            "5m": 300,
+            "15m": 900,
+            "30m": 1800,
+            "1h": 3600,
+            "4h": 14400,
+            "1d": 86400,
+            "1w": 604800,
+        }
+        return _seconds_map[self.value]
 
     @property
     def minutes(self) -> int:

@@ -97,6 +97,12 @@ Homepage = "https://github.com/ziho/AlgorithmTrader"
 Repository = "https://github.com/ziho/AlgorithmTrader"
 Issues = "https://github.com/ziho/AlgorithmTrader/issues"
 
+# ============================================
+# Hatch 构建配置
+# ============================================
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
 [project.scripts]
 collector = "services.collector.main:main"
 trader = "services.trader.main:main"

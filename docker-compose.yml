@@ -120,6 +120,28 @@ services:
     profiles:
       - logging  # 使用 --profile logging 启用
 
+  # ============================================
+  # Python 开发/运行环境
+  # ============================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algorithmtrader-app
+    restart: "no"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - influxdb
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - dev  # 使用 --profile dev 启用
+
 # ============================================
 # Networks
 # ============================================
