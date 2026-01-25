@@ -24,6 +24,7 @@ from .events import (
 )
 from .instruments import AssetType, CommonSymbols, Exchange, Symbol
 from .timeframes import TRADING_TIMEFRAMES, Timeframe
+from .typing import BarFrame, OrderIntent, PositionSide, StrategyOutput, TargetPosition
 
 __all__ = [
     # Events
@@ -46,4 +47,10 @@ __all__ = [
     # Timeframes
     "Timeframe",
     "TRADING_TIMEFRAMES",
+    # Typing
+    "PositionSide",
+    "BarFrame",
+    "TargetPosition",
+    "OrderIntent",
+    "StrategyOutput",
 ]
