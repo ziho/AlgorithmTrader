@@ -415,6 +415,93 @@ class InfluxStore:
             logger.error("influx_health_check_failed", error=str(e))
             return False
 
+    def write_backtest_summary(self, summary: Any) -> None:
+        """
+        写入回测摘要
+
+        Args:
+            summary: BacktestSummary 对象
+        """
+        from datetime import UTC
+
+        timestamp = summary.run_timestamp
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+
+        point = (
+            Point("backtest_summary")
+            .tag("run_id", summary.run_id)
+            .tag("strategy", summary.strategy_name)
+            .tag("timeframe", summary.timeframe)
+            .field("initial_capital", float(summary.initial_capital))
+            .field("final_equity", float(summary.final_equity))
+            .field("total_pnl", float(summary.total_pnl))
+            .field("total_return", float(summary.total_return))
+            .field("sharpe_ratio", float(summary.metrics.sharpe_ratio))
+            .field("sortino_ratio", float(summary.metrics.sortino_ratio))
+            .field("calmar_ratio", float(summary.metrics.calmar_ratio))
+            .field("max_drawdown", float(summary.metrics.max_drawdown))
+            .field("volatility", float(summary.metrics.volatility))
+            .field("annualized_return", float(summary.metrics.annualized_return))
+            .field("total_trades", summary.metrics.trade_stats.total_trades)
+            .field("win_rate", summary.metrics.trade_stats.win_rate)
+            .time(timestamp, WritePrecision.S)
+        )
+
+        self._write_api.write(bucket=self.bucket, record=point)
+        logger.debug("influx_backtest_summary_written", run_id=summary.run_id)
+
+    def write_backtest_equity(
+        self,
+        run_id: str,
+        equity_curve: list[Any],
+        sample_rate: int = 1,
+    ) -> int:
+        """
+        写入回测权益曲线
+
+        Args:
+            run_id: 回测运行ID
+            equity_curve: EquityPoint 列表
+            sample_rate: 采样率（每N个点写入1个）
+
+        Returns:
+            写入的点数
+        """
+        if not equity_curve:
+            return 0
+
+        points = []
+        for i, ep in enumerate(equity_curve):
+            if i % sample_rate != 0:
+                continue
+
+            ts = ep.timestamp
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+
+            point = (
+                Point("backtest_equity")
+                .tag("run_id", run_id)
+                .field("equity", float(ep.equity))
+                .field("cash", float(ep.cash))
+                .field("position_value", float(ep.position_value))
+                .field("drawdown", float(ep.drawdown))
+                .field("drawdown_pct", float(ep.drawdown_pct))
+                .time(ts, WritePrecision.S)
+            )
+            points.append(point)
+
+        if points:
+            self._write_api.write(bucket=self.bucket, record=points)
+            logger.debug(
+                "influx_backtest_equity_written",
+                run_id=run_id,
+                points=len(points),
+            )
+
+        return len(points)
+
     def flush(self):
         """刷新写入缓冲区"""
         self._write_api.flush()

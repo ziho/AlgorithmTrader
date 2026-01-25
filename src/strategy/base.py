@@ -42,6 +42,11 @@ class StrategyConfig:
     stop_loss_pct: float | None = None
     take_profit_pct: float | None = None
 
+    @property
+    def timeframe(self) -> str:
+        """获取主时间框架（第一个）"""
+        return self.timeframes[0] if self.timeframes else "15m"
+
     def to_dict(self) -> dict[str, Any]:
         """转换为字典"""
         return {

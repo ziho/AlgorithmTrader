@@ -16,6 +16,13 @@ from src.backtest.engine import (
     Trade,
 )
 from src.backtest.metrics import MetricsCalculator, PerformanceMetrics, TradeStats
+from src.backtest.reports import (
+    BacktestSummary,
+    ReportConfig,
+    ReportGenerator,
+    generate_markdown_report,
+    generate_text_report,
+)
 
 __all__ = [
     # Engine
@@ -29,4 +36,10 @@ __all__ = [
     "MetricsCalculator",
     "PerformanceMetrics",
     "TradeStats",
+    # Reports
+    "BacktestSummary",
+    "ReportConfig",
+    "ReportGenerator",
+    "generate_text_report",
+    "generate_markdown_report",
 ]
