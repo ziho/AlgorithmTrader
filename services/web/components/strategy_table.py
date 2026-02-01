@@ -4,7 +4,7 @@
 用于展示策略列表
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 from nicegui import ui
 
@@ -17,7 +17,7 @@ def render(
 ):
     """
     渲染策略表格
-    
+
     Args:
         strategies: 策略列表
         on_toggle: 切换启用状态回调
@@ -37,7 +37,7 @@ def render(
             ui.label("当前持仓").classes("w-32")
             ui.label("今日 PnL").classes("w-24 text-right")
             ui.label("操作").classes("w-24 text-right")
-        
+
         # 表格内容
         if not strategies:
             with ui.row().classes("w-full py-8 justify-center"):
@@ -62,22 +62,24 @@ def _render_row(
         with ui.element("div").classes("w-16"):
             ui.switch(
                 value=strategy.get("enabled", False),
-                on_change=lambda e, s=strategy: on_toggle(s, e.value) if on_toggle else None,
+                on_change=lambda e, s=strategy: on_toggle(s, e.value)
+                if on_toggle
+                else None,
             ).props("dense")
-        
+
         # 策略名称
         with ui.column().classes("flex-1 min-w-40 gap-0"):
             ui.label(strategy.get("name", "unnamed")).classes("font-medium")
             ui.label(strategy.get("class", "")).classes("text-xs text-gray-400")
-        
+
         # 交易对
         symbols = strategy.get("symbols", [])
         symbols_text = ", ".join(symbols) if symbols else "-"
         ui.label(symbols_text).classes("w-32 text-sm truncate")
-        
+
         # 周期
         ui.label(strategy.get("timeframe", "-")).classes("w-16 text-sm")
-        
+
         # 当前持仓
         with ui.column().classes("w-32 gap-0"):
             position = strategy.get("position", {})
@@ -87,13 +89,13 @@ def _render_row(
                         ui.label(f"{symbol}: {qty}").classes("text-xs")
             else:
                 ui.label("-").classes("text-sm text-gray-400")
-        
+
         # 今日 PnL
         pnl = strategy.get("today_pnl", 0.0)
         pnl_class = "text-green-600" if pnl >= 0 else "text-red-600"
         pnl_text = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         ui.label(pnl_text).classes(f"w-24 text-right text-sm font-medium {pnl_class}")
-        
+
         # 操作按钮
         with ui.row().classes("w-24 justify-end gap-1"):
             ui.button(

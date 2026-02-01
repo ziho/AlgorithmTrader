@@ -393,11 +393,15 @@ class DataCollector:
 
             funding_time = None
             if funding_ts:
-                funding_time = pd.to_datetime(funding_ts, unit="ms", utc=True).to_pydatetime()
+                funding_time = pd.to_datetime(
+                    funding_ts, unit="ms", utc=True
+                ).to_pydatetime()
 
             next_funding_time = None
             if next_funding_ts:
-                next_funding_time = pd.to_datetime(next_funding_ts, unit="ms", utc=True).to_pydatetime()
+                next_funding_time = pd.to_datetime(
+                    next_funding_ts, unit="ms", utc=True
+                ).to_pydatetime()
 
             # 写入 InfluxDB
             influx_store = self._get_influx_store()

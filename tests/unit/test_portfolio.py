@@ -75,7 +75,9 @@ class TestPosition:
 
     def test_position_add_to_long(self) -> None:
         """测试加多仓"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000")
+        )
 
         pos.update(OrderSide.BUY, Decimal("1"), Decimal("52000"))
 
@@ -84,7 +86,9 @@ class TestPosition:
 
     def test_position_partial_close_long(self) -> None:
         """测试多仓部分平仓"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("2"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("2"), avg_price=Decimal("50000")
+        )
 
         realized = pos.update(OrderSide.SELL, Decimal("1"), Decimal("55000"))
 
@@ -94,7 +98,9 @@ class TestPosition:
 
     def test_position_full_close_long(self) -> None:
         """测试多仓全部平仓"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000")
+        )
 
         realized = pos.update(OrderSide.SELL, Decimal("1"), Decimal("55000"))
 
@@ -104,7 +110,9 @@ class TestPosition:
 
     def test_position_partial_close_short(self) -> None:
         """测试空仓部分平仓"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("-2"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("-2"), avg_price=Decimal("50000")
+        )
 
         realized = pos.update(OrderSide.BUY, Decimal("1"), Decimal("48000"))
 
@@ -113,7 +121,9 @@ class TestPosition:
 
     def test_position_reverse_long_to_short(self) -> None:
         """测试多翻空"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000")
+        )
 
         realized = pos.update(OrderSide.SELL, Decimal("2"), Decimal("55000"))
 
@@ -123,14 +133,18 @@ class TestPosition:
 
     def test_position_unrealized_pnl_long(self) -> None:
         """测试多仓未实现盈亏"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000")
+        )
 
         assert pos.unrealized_pnl(Decimal("55000")) == Decimal("5000")
         assert pos.unrealized_pnl(Decimal("45000")) == Decimal("-5000")
 
     def test_position_unrealized_pnl_short(self) -> None:
         """测试空仓未实现盈亏"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("-1"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("-1"), avg_price=Decimal("50000")
+        )
 
         # 空仓价格下跌盈利
         assert pos.unrealized_pnl(Decimal("45000")) == Decimal("5000")
@@ -138,13 +152,17 @@ class TestPosition:
 
     def test_position_market_value(self) -> None:
         """测试市值计算"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("2"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("2"), avg_price=Decimal("50000")
+        )
 
         assert pos.market_value(Decimal("52000")) == Decimal("104000")
 
     def test_position_close_method(self) -> None:
         """测试close方法"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000")
+        )
 
         realized = pos.close(Decimal("55000"))
 
@@ -153,7 +171,9 @@ class TestPosition:
 
     def test_position_copy(self) -> None:
         """测试复制"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000")
+        )
         pos_copy = pos.copy()
 
         pos.update(OrderSide.BUY, Decimal("1"), Decimal("52000"))
@@ -162,7 +182,9 @@ class TestPosition:
 
     def test_position_to_dict(self) -> None:
         """测试转换为字典"""
-        pos = Position(symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000"))
+        pos = Position(
+            symbol="BTC/USDT", quantity=Decimal("1"), avg_price=Decimal("50000")
+        )
         d = pos.to_dict()
 
         assert d["symbol"] == "BTC/USDT"
@@ -191,7 +213,9 @@ class TestPositionTracker:
         """测试更新持仓"""
         tracker = PositionTracker()
 
-        tracker.update_position("BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000"))
+        tracker.update_position(
+            "BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000")
+        )
 
         assert tracker.has_position("BTC/USDT")
         pos = tracker.get_position("BTC/USDT")
@@ -201,16 +225,24 @@ class TestPositionTracker:
         """测试多品种持仓"""
         tracker = PositionTracker()
 
-        tracker.update_position("BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000"))
-        tracker.update_position("ETH/USDT", OrderSide.BUY, Decimal("10"), Decimal("3000"))
+        tracker.update_position(
+            "BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000")
+        )
+        tracker.update_position(
+            "ETH/USDT", OrderSide.BUY, Decimal("10"), Decimal("3000")
+        )
 
         assert len(tracker.active_positions) == 2
 
     def test_tracker_calculate_value(self) -> None:
         """测试计算总市值"""
         tracker = PositionTracker()
-        tracker.update_position("BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000"))
-        tracker.update_position("ETH/USDT", OrderSide.BUY, Decimal("10"), Decimal("3000"))
+        tracker.update_position(
+            "BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000")
+        )
+        tracker.update_position(
+            "ETH/USDT", OrderSide.BUY, Decimal("10"), Decimal("3000")
+        )
 
         prices = {"BTC/USDT": Decimal("52000"), "ETH/USDT": Decimal("3200")}
         value = tracker.calculate_value(prices)
@@ -220,7 +252,9 @@ class TestPositionTracker:
     def test_tracker_close_position(self) -> None:
         """测试平仓"""
         tracker = PositionTracker()
-        tracker.update_position("BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000"))
+        tracker.update_position(
+            "BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000")
+        )
 
         realized = tracker.close_position("BTC/USDT", Decimal("55000"))
 
@@ -230,8 +264,12 @@ class TestPositionTracker:
     def test_tracker_close_all(self) -> None:
         """测试全部平仓"""
         tracker = PositionTracker()
-        tracker.update_position("BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000"))
-        tracker.update_position("ETH/USDT", OrderSide.BUY, Decimal("10"), Decimal("3000"))
+        tracker.update_position(
+            "BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000")
+        )
+        tracker.update_position(
+            "ETH/USDT", OrderSide.BUY, Decimal("10"), Decimal("3000")
+        )
 
         prices = {"BTC/USDT": Decimal("55000"), "ETH/USDT": Decimal("3200")}
         realized = tracker.close_all(prices)
@@ -242,7 +280,9 @@ class TestPositionTracker:
     def test_tracker_take_snapshot(self) -> None:
         """测试生成快照"""
         tracker = PositionTracker()
-        tracker.update_position("BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000"))
+        tracker.update_position(
+            "BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000")
+        )
 
         ts = datetime(2024, 1, 1, 10, 0, 0)
         prices = {"BTC/USDT": Decimal("52000")}
@@ -256,7 +296,9 @@ class TestPositionTracker:
     def test_tracker_reset(self) -> None:
         """测试重置"""
         tracker = PositionTracker()
-        tracker.update_position("BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000"))
+        tracker.update_position(
+            "BTC/USDT", OrderSide.BUY, Decimal("1"), Decimal("50000")
+        )
         tracker.reset()
 
         assert len(tracker.positions) == 0
@@ -267,9 +309,15 @@ class TestTargetPosition:
 
     def test_target_position_signed_quantity(self) -> None:
         """测试带符号数量"""
-        long = TargetPosition(symbol="BTC/USDT", side=PositionSide.LONG, quantity=Decimal("1"))
-        short = TargetPosition(symbol="BTC/USDT", side=PositionSide.SHORT, quantity=Decimal("1"))
-        flat = TargetPosition(symbol="BTC/USDT", side=PositionSide.FLAT, quantity=Decimal("1"))
+        long = TargetPosition(
+            symbol="BTC/USDT", side=PositionSide.LONG, quantity=Decimal("1")
+        )
+        short = TargetPosition(
+            symbol="BTC/USDT", side=PositionSide.SHORT, quantity=Decimal("1")
+        )
+        flat = TargetPosition(
+            symbol="BTC/USDT", side=PositionSide.FLAT, quantity=Decimal("1")
+        )
 
         assert long.signed_quantity == Decimal("1")
         assert short.signed_quantity == Decimal("-1")
@@ -469,9 +517,14 @@ class TestWeightCalculator:
     def test_rebalance_weights(self) -> None:
         """测试再平衡权重"""
         current = {"BTC": Decimal("0.4"), "ETH": Decimal("0.3")}
-        target = {"BTC": Decimal("0.5"), "ETH": Decimal("0.28")}  # ETH差异0.02 < 阈值0.05
+        target = {
+            "BTC": Decimal("0.5"),
+            "ETH": Decimal("0.28"),
+        }  # ETH差异0.02 < 阈值0.05
 
-        adjustments = WeightCalculator.rebalance_weights(current, target, Decimal("0.05"))
+        adjustments = WeightCalculator.rebalance_weights(
+            current, target, Decimal("0.05")
+        )
 
         assert "BTC" in adjustments  # 需要调整，差异0.1
         assert "ETH" not in adjustments  # 差异小于阈值

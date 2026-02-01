@@ -8,7 +8,7 @@
 """
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -193,20 +193,20 @@ STRATEGY_PARAM_SPACES: dict[str, dict[str, dict[str, Any]]] = {
 @dataclass
 class StrategyRunConfig:
     """策略运行配置"""
-    
+
     name: str  # 配置名称（唯一标识）
     strategy_class: str  # 策略类名
     enabled: bool = False
     symbols: list[str] = field(default_factory=list)
     timeframes: list[str] = field(default_factory=lambda: ["15m"])
     params: dict[str, Any] = field(default_factory=dict)
-    
+
     # 运行时状态（不持久化）
     status: str = "stopped"  # running, stopped, error
     current_position: dict[str, float] = field(default_factory=dict)
     today_pnl: float = 0.0
     last_updated: datetime | None = None
-    
+
     def to_dict(self) -> dict[str, Any]:
         """转为可序列化字典"""
         return {
@@ -217,7 +217,7 @@ class StrategyRunConfig:
             "timeframes": self.timeframes,
             "params": self.params,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "StrategyRunConfig":
         """从字典创建"""
@@ -234,121 +234,120 @@ class StrategyRunConfig:
 class StrategyConfigManager:
     """
     策略配置管理器
-    
+
     负责加载、保存和管理所有策略的运行配置
     """
-    
+
     CONFIG_FILE = "config/strategies.json"
-    
+
     def __init__(self, config_path: str | Path | None = None):
         self.config_path = Path(config_path) if config_path else Path(self.CONFIG_FILE)
         self._configs: dict[str, StrategyRunConfig] = {}
         self._loaded = False
-    
+
     def load(self) -> None:
         """加载配置文件"""
         if self.config_path.exists():
             try:
                 with open(self.config_path) as f:
                     data = json.load(f)
-                
+
                 for item in data.get("strategies", []):
                     config = StrategyRunConfig.from_dict(item)
                     self._configs[config.name] = config
-                
+
                 logger.info("strategy_configs_loaded", count=len(self._configs))
             except Exception as e:
                 logger.error("strategy_configs_load_failed", error=str(e))
-        
+
         self._loaded = True
-    
+
     def save(self) -> None:
         """保存配置文件"""
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         data = {
             "strategies": [c.to_dict() for c in self._configs.values()],
             "updated_at": datetime.now().isoformat(),
         }
-        
+
         with open(self.config_path, "w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        
+
         logger.info("strategy_configs_saved", count=len(self._configs))
-    
+
     def get_all(self) -> list[StrategyRunConfig]:
         """获取所有配置"""
         if not self._loaded:
             self.load()
         return list(self._configs.values())
-    
+
     def get(self, name: str) -> StrategyRunConfig | None:
         """获取单个配置"""
         if not self._loaded:
             self.load()
         return self._configs.get(name)
-    
+
     def add(self, config: StrategyRunConfig) -> None:
         """添加配置"""
         self._configs[config.name] = config
         self.save()
-    
+
     def update(self, name: str, **kwargs) -> bool:
         """更新配置"""
         if name not in self._configs:
             return False
-        
+
         config = self._configs[name]
         for key, value in kwargs.items():
             if hasattr(config, key):
                 setattr(config, key, value)
-        
+
         self.save()
         return True
-    
+
     def delete(self, name: str) -> bool:
         """删除配置"""
         if name not in self._configs:
             return False
-        
+
         del self._configs[name]
         self.save()
         return True
-    
+
     def get_available_strategies(self) -> list[dict[str, Any]]:
         """
         获取所有可用的策略类
-        
+
         返回策略类信息，包括参数空间
         """
         strategies = []
-        
+
         for strategy_name in list_strategies():
             strategy_cls = get_strategy(strategy_name)
             if strategy_cls:
                 class_name = strategy_cls.__name__
                 param_space = STRATEGY_PARAM_SPACES.get(class_name, {})
-                
-                strategies.append({
-                    "name": strategy_name,
-                    "class_name": class_name,
-                    "param_space": param_space,
-                    "doc": strategy_cls.__doc__ or "",
-                })
-        
+
+                strategies.append(
+                    {
+                        "name": strategy_name,
+                        "class_name": class_name,
+                        "param_space": param_space,
+                        "doc": strategy_cls.__doc__ or "",
+                    }
+                )
+
         return strategies
-    
+
     def get_param_space(self, strategy_class: str) -> dict[str, dict[str, Any]]:
         """获取策略的参数空间"""
         return STRATEGY_PARAM_SPACES.get(strategy_class, {})
-    
+
     def get_default_params(self, strategy_class: str) -> dict[str, Any]:
         """获取策略的默认参数"""
         param_space = self.get_param_space(strategy_class)
-        return {
-            key: spec.get("default")
-            for key, spec in param_space.items()
-        }
+        return {key: spec.get("default") for key, spec in param_space.items()}
 
 
 # 全局实例

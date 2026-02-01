@@ -532,7 +532,8 @@ class BacktestEngine:
                             trade = self._process_order_intent(
                                 intent=out,
                                 next_open=next_opens.get(
-                                    out.symbol, current_prices.get(out.symbol, Decimal("0"))
+                                    out.symbol,
+                                    current_prices.get(out.symbol, Decimal("0")),
                                 ),
                                 bar_volume=bar_volumes.get(out.symbol, Decimal("0")),
                                 timestamp=ts.to_pydatetime()

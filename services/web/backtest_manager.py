@@ -8,36 +8,35 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 
 @dataclass
 class BacktestRecord:
     """回测记录"""
-    
+
     id: str
     strategy_class: str
     strategy_params: dict = field(default_factory=dict)
-    
+
     # 数据设置
     symbol: str = "BTC/USDT"
     timeframe: str = "15m"
     start_date: str = ""
     end_date: str = ""
-    
+
     # 回测设置
     initial_capital: float = 100000.0
-    
+
     # 状态
     status: str = "pending"  # pending, running, completed, failed
     created_at: str = ""
     started_at: str | None = None
     finished_at: str | None = None
-    
+
     # 结果
     metrics: dict = field(default_factory=dict)
     error: str | None = None
-    
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -55,7 +54,7 @@ class BacktestRecord:
             "metrics": self.metrics,
             "error": self.error,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "BacktestRecord":
         return cls(
@@ -79,21 +78,21 @@ class BacktestRecord:
 class BacktestResultManager:
     """
     回测结果管理器
-    
+
     存储和查询回测记录
     """
-    
+
     def __init__(self, config_path: Path | None = None):
         self.config_path = config_path or Path("config/backtests.json")
         self._records: list[BacktestRecord] = []
         self.load()
-    
+
     def load(self):
         """加载回测记录"""
         if not self.config_path.exists():
             self._records = []
             return
-        
+
         try:
             data = json.loads(self.config_path.read_text())
             self._records = [
@@ -101,34 +100,34 @@ class BacktestResultManager:
             ]
         except Exception:
             self._records = []
-    
+
     def save(self):
         """保存回测记录"""
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         data = {
             "backtests": [r.to_dict() for r in self._records],
             "updated_at": datetime.now().isoformat(),
         }
-        
+
         self.config_path.write_text(json.dumps(data, indent=2, default=str))
-    
+
     def get_all(self) -> list[BacktestRecord]:
         """获取所有回测记录"""
         return self._records.copy()
-    
+
     def get(self, record_id: str) -> BacktestRecord | None:
         """获取指定回测记录"""
         for record in self._records:
             if record.id == record_id:
                 return record
         return None
-    
+
     def add(self, record: BacktestRecord):
         """添加回测记录"""
         self._records.append(record)
         self.save()
-    
+
     def update(self, record_id: str, **kwargs) -> bool:
         """更新回测记录"""
         for record in self._records:
@@ -139,7 +138,7 @@ class BacktestResultManager:
                 self.save()
                 return True
         return False
-    
+
     def delete(self, record_id: str) -> bool:
         """删除回测记录"""
         for i, record in enumerate(self._records):
@@ -148,7 +147,7 @@ class BacktestResultManager:
                 self.save()
                 return True
         return False
-    
+
     def filter(
         self,
         strategy: str | None = None,
@@ -157,16 +156,16 @@ class BacktestResultManager:
     ) -> list[BacktestRecord]:
         """筛选回测记录"""
         results = self._records
-        
+
         if strategy:
             results = [r for r in results if r.strategy_class == strategy]
         if status:
             results = [r for r in results if r.status == status]
         if symbol:
             results = [r for r in results if r.symbol == symbol]
-        
+
         return results
-    
+
     def get_recent(self, n: int = 10) -> list[BacktestRecord]:
         """获取最近的 n 条回测记录"""
         sorted_records = sorted(

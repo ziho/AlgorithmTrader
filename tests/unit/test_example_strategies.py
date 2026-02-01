@@ -622,6 +622,8 @@ class TestEdgeCases:
 
         result = strategy.on_bar(bar_frame)
         # 应该不会崩溃
-        assert result is None or isinstance(result, type(None)) or hasattr(
-            result, "quantity"
+        assert (
+            result is None
+            or isinstance(result, type(None))
+            or hasattr(result, "quantity")
         )

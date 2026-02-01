@@ -289,11 +289,15 @@ class OKXConnector:
         # 转换为 DataFrame
         records = []
         for item in funding_history:
-            records.append({
-                "timestamp": pd.to_datetime(item.get("timestamp"), unit="ms", utc=True),
-                "symbol": item.get("symbol", ccxt_symbol),
-                "funding_rate": Decimal(str(item.get("fundingRate", 0) or 0)),
-            })
+            records.append(
+                {
+                    "timestamp": pd.to_datetime(
+                        item.get("timestamp"), unit="ms", utc=True
+                    ),
+                    "symbol": item.get("symbol", ccxt_symbol),
+                    "funding_rate": Decimal(str(item.get("fundingRate", 0) or 0)),
+                }
+            )
 
         df = pd.DataFrame(records)
         return df

@@ -15,7 +15,6 @@ from src.risk.engine import (
     RiskCheckResult,
     RiskContext,
     RiskEngine,
-    RiskRule,
     create_default_risk_engine,
 )
 

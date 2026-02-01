@@ -14,18 +14,18 @@ from src.optimization.engine import (
     OptimizationEngine,
     OptimizationResult,
 )
-from src.optimization.objectives import (
-    MaximizeSharpe,
-    MaximizeReturn,
-    MinimizeDrawdown,
-    MultiObjective,
-    Objective,
-)
 from src.optimization.methods import (
     GridSearch,
     ParameterSpace,
     RandomSearch,
     SearchMethod,
+)
+from src.optimization.objectives import (
+    MaximizeReturn,
+    MaximizeSharpe,
+    MinimizeDrawdown,
+    MultiObjective,
+    Objective,
 )
 from src.optimization.walk_forward import (
     WalkForwardConfig,

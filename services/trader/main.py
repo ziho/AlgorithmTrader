@@ -472,9 +472,7 @@ class LiveTrader:
             daily_pnl=self.state.daily_pnl,
             daily_trades=self.state.daily_trades,
             positions={p.symbol: p.quantity for p in self._positions.values()},
-            position_values={
-                p.symbol: p.value for p in self._positions.values()
-            },
+            position_values={p.symbol: p.value for p in self._positions.values()},
             peak_equity=self.state.peak_equity,
             pending_order=intent,
         )

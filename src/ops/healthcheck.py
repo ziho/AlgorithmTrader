@@ -63,7 +63,9 @@ def check_influxdb_health(
         url = url or settings.influxdb.url
         token = token or settings.influxdb.token.get_secret_value()
 
-        with InfluxDBClient(url=url, token=token, timeout=int(timeout * 1000)) as client:
+        with InfluxDBClient(
+            url=url, token=token, timeout=int(timeout * 1000)
+        ) as client:
             health = client.health()
             is_healthy = health.status == "pass"
 

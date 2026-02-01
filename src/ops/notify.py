@@ -273,7 +273,9 @@ class WebhookNotifier:
         self._enabled = bool(self._webhook_url)
 
         # 检测是否是 Bark URL
-        self._is_bark = "api.day.app" in self._webhook_url if self._webhook_url else False
+        self._is_bark = (
+            "api.day.app" in self._webhook_url if self._webhook_url else False
+        )
 
     @property
     def enabled(self) -> bool:
@@ -341,18 +343,16 @@ class WebhookNotifier:
                         "title": title,
                         "body": message.content,
                         "group": message.notify_type.value,
-                        "level": "timeSensitive" if message.level in (
-                            NotifyLevel.ERROR, NotifyLevel.CRITICAL
-                        ) else "active",
+                        "level": "timeSensitive"
+                        if message.level in (NotifyLevel.ERROR, NotifyLevel.CRITICAL)
+                        else "active",
                     }
                     async with session.post(base_url, json=payload) as resp:
                         success = resp.status == 200
                 else:
                     # 通用 Webhook
                     payload = self._build_payload(message)
-                    async with session.post(
-                        self._webhook_url, json=payload
-                    ) as resp:
+                    async with session.post(self._webhook_url, json=payload) as resp:
                         success = resp.status in (200, 201, 204)
 
             self._last_send_time = time.time()
@@ -373,7 +373,7 @@ class WebhookNotifier:
 
             return success
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("webhook_timeout", url=self._webhook_url)
             return False
         except Exception as e:

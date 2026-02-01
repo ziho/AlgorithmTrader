@@ -41,12 +41,14 @@ logger = structlog.get_logger(__name__)
 
 class MarginMode(str, Enum):
     """保证金模式"""
+
     CROSS = "cross"  # 全仓
     ISOLATED = "isolated"  # 逐仓
 
 
 class PositionSide(str, Enum):
     """持仓方向 (双向持仓模式)"""
+
     LONG = "long"
     SHORT = "short"
     NET = "net"  # 单向持仓模式
@@ -59,6 +61,7 @@ class SwapPosition:
 
     扩展基础 Position，包含合约特有字段
     """
+
     symbol: str
     side: PositionSide  # 持仓方向
     quantity: Decimal  # 持仓数量 (张数)
@@ -303,14 +306,18 @@ class OKXSwapBroker(BrokerBase):
         """解析订单类型"""
         return OrderType.LIMIT if order_type.lower() == "limit" else OrderType.MARKET
 
-    def _parse_order(self, raw_order: dict[str, Any], original_order: Order | None = None) -> Order:
+    def _parse_order(
+        self, raw_order: dict[str, Any], original_order: Order | None = None
+    ) -> Order:
         """解析 ccxt 订单为 Order 对象"""
         order = Order(
             symbol=raw_order.get("symbol", ""),
             side=self._parse_order_side(raw_order.get("side", "buy")),
             order_type=self._parse_order_type(raw_order.get("type", "market")),
             quantity=Decimal(str(raw_order.get("amount", 0))),
-            price=Decimal(str(raw_order.get("price", 0))) if raw_order.get("price") else None,
+            price=Decimal(str(raw_order.get("price", 0)))
+            if raw_order.get("price")
+            else None,
             client_order_id=raw_order.get("clientOrderId", "")
             or (original_order.client_order_id if original_order else ""),
             exchange_order_id=raw_order.get("id", ""),
@@ -340,7 +347,9 @@ class OKXSwapBroker(BrokerBase):
 
         # 解析保证金模式
         margin_mode_str = info.get("mgnMode", "cross").lower()
-        margin_mode = MarginMode.ISOLATED if margin_mode_str == "isolated" else MarginMode.CROSS
+        margin_mode = (
+            MarginMode.ISOLATED if margin_mode_str == "isolated" else MarginMode.CROSS
+        )
 
         return SwapPosition(
             symbol=raw_position.get("symbol", ""),
@@ -353,7 +362,9 @@ class OKXSwapBroker(BrokerBase):
             realized_pnl=Decimal(str(info.get("realizedPnl", 0) or 0)),
             leverage=int(raw_position.get("leverage", 1) or 1),
             margin_mode=margin_mode,
-            liquidation_price=Decimal(str(raw_position.get("liquidationPrice", 0) or 0)),
+            liquidation_price=Decimal(
+                str(raw_position.get("liquidationPrice", 0) or 0)
+            ),
             margin=Decimal(str(raw_position.get("collateral", 0) or 0)),
             margin_ratio=Decimal(str(raw_position.get("marginRatio", 0) or 0)),
         )
@@ -721,7 +732,9 @@ class OKXSwapBroker(BrokerBase):
                 params,
             )
 
-            logger.info("swap_order_cancelled", order_id=exchange_order_id or client_order_id)
+            logger.info(
+                "swap_order_cancelled", order_id=exchange_order_id or client_order_id
+            )
 
             return BrokerResult.ok(raw_order)
 
@@ -799,7 +812,14 @@ class OKXSwapBroker(BrokerBase):
             balances: list[Balance] = []
 
             for currency, balance_info in raw_balance.items():
-                if currency in ("info", "timestamp", "datetime", "free", "used", "total"):
+                if currency in (
+                    "info",
+                    "timestamp",
+                    "datetime",
+                    "free",
+                    "used",
+                    "total",
+                ):
                     continue
 
                 if isinstance(balance_info, dict):

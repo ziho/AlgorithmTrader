@@ -28,7 +28,7 @@ class TestLiveClock:
 
     def test_current_bar_time_15m(self):
         """测试 15 分钟 bar 时间计算"""
-        clock = LiveClock()
+        _clock = LiveClock()  # Verify construction works
 
         # 模拟一个时间点
         test_time = datetime(2024, 1, 15, 10, 23, 45, tzinfo=UTC)

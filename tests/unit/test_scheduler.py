@@ -2,9 +2,7 @@
 调度器测试
 """
 
-from datetime import UTC, datetime, timedelta
-
-import pytest
+from datetime import UTC, datetime
 
 from src.ops.scheduler import (
     ScheduledTask,

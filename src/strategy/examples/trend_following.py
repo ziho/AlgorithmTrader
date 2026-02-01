@@ -248,11 +248,7 @@ class DonchianBreakoutStrategy(StrategyBase):
                     reason=f"breakout_long: price={current_price:.2f} > upper={entry_upper:.2f}",
                 )
         # 向下突破 → 做空
-        elif (
-            current_price < entry_lower
-            and self.allow_short
-            and current_position >= 0
-        ):
+        elif current_price < entry_lower and self.allow_short and current_position >= 0:
             self.set_state("entry_price", current_price)
             return self.target_short(
                 symbol=symbol,

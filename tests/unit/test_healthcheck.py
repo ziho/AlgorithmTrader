@@ -2,10 +2,7 @@
 健康检查模块测试
 """
 
-from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from src.ops.healthcheck import (
     HealthChecker,
@@ -70,7 +67,9 @@ class TestCheckInfluxDBHealth:
             mock_health.status = "pass"
             mock_health.message = "OK"
             mock_client.health.return_value = mock_health
-            mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
+            mock_client_class.return_value.__enter__ = MagicMock(
+                return_value=mock_client
+            )
             mock_client_class.return_value.__exit__ = MagicMock(return_value=None)
 
             result = check_influxdb_health(
@@ -87,7 +86,9 @@ class TestCheckInfluxDBHealth:
             mock_health = MagicMock()
             mock_health.status = "fail"
             mock_client.health.return_value = mock_health
-            mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
+            mock_client_class.return_value.__enter__ = MagicMock(
+                return_value=mock_client
+            )
             mock_client_class.return_value.__exit__ = MagicMock(return_value=None)
 
             result = check_influxdb_health(

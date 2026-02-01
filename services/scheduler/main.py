@@ -306,7 +306,9 @@ class SchedulerService:
         """获取服务状态"""
         return {
             "running": self.state.running,
-            "started_at": self.state.started_at.isoformat() if self.state.started_at else None,
+            "started_at": self.state.started_at.isoformat()
+            if self.state.started_at
+            else None,
             "tasks_scheduled": self.state.tasks_scheduled,
             "tasks_executed": self.state.tasks_executed,
             "tasks_succeeded": self.state.tasks_succeeded,

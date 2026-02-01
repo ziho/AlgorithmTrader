@@ -307,17 +307,19 @@ class ReportGenerator:
 
         # 保存权益曲线
         if result.equity_curve:
-            equity_df = pd.DataFrame([
-                {
-                    "timestamp": ep.timestamp,
-                    "equity": float(ep.equity),
-                    "cash": float(ep.cash),
-                    "position_value": float(ep.position_value),
-                    "drawdown": float(ep.drawdown),
-                    "drawdown_pct": float(ep.drawdown_pct),
-                }
-                for ep in result.equity_curve
-            ])
+            equity_df = pd.DataFrame(
+                [
+                    {
+                        "timestamp": ep.timestamp,
+                        "equity": float(ep.equity),
+                        "cash": float(ep.cash),
+                        "position_value": float(ep.position_value),
+                        "drawdown": float(ep.drawdown),
+                        "drawdown_pct": float(ep.drawdown_pct),
+                    }
+                    for ep in result.equity_curve
+                ]
+            )
             equity_path = output_dir / "equity_curve.parquet"
             equity_df.to_parquet(equity_path, engine="pyarrow")
             saved_paths.append(equity_path)
@@ -440,7 +442,7 @@ def generate_markdown_report(summary: BacktestSummary) -> str:
 | 项目 | 值 |
 |------|-----|
 | 运行ID | {summary.run_id} |
-| 交易对 | {', '.join(summary.symbols)} |
+| 交易对 | {", ".join(summary.symbols)} |
 | 时间框架 | {summary.timeframe} |
 | 回测区间 | {summary.start_date} ~ {summary.end_date} |
 | 运行耗时 | {summary.run_duration_seconds:.2f} 秒 |

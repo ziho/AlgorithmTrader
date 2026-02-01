@@ -5,14 +5,12 @@ Scheduler 服务测试
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from services.scheduler.main import (
     SchedulerConfig,
     SchedulerService,
     SchedulerState,
 )
-from src.ops.scheduler import TaskResult, TaskType
+from src.ops.scheduler import TaskResult
 
 
 class TestSchedulerConfig:

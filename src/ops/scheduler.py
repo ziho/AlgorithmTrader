@@ -137,15 +137,11 @@ class TradingScheduler:
         """调度器是否运行中"""
         return self._running
 
-    def set_on_task_complete(
-        self, callback: Callable[[TaskResult], None]
-    ) -> None:
+    def set_on_task_complete(self, callback: Callable[[TaskResult], None]) -> None:
         """设置任务完成回调"""
         self._on_task_complete = callback
 
-    def set_on_task_error(
-        self, callback: Callable[[str, Exception], None]
-    ) -> None:
+    def set_on_task_error(self, callback: Callable[[str, Exception], None]) -> None:
         """设置任务错误回调"""
         self._on_task_error = callback
 
@@ -252,7 +248,9 @@ class TradingScheduler:
 
         # 立即执行一次
         if task.run_immediately and self._running:
-            self._scheduler.get_job(task.task_id).modify(next_run_time=datetime.now(UTC))
+            self._scheduler.get_job(task.task_id).modify(
+                next_run_time=datetime.now(UTC)
+            )
 
         return True
 
@@ -432,7 +430,9 @@ class TradingScheduler:
         return job.next_run_time
 
 
-def calculate_next_bar_time(timeframe: str, current_time: datetime | None = None) -> datetime:
+def calculate_next_bar_time(
+    timeframe: str, current_time: datetime | None = None
+) -> datetime:
     """
     计算下一个 bar close 时间
 
@@ -449,7 +449,9 @@ def calculate_next_bar_time(timeframe: str, current_time: datetime | None = None
         # 下一个 15 分钟整点
         minute = (now.minute // 15 + 1) * 15
         if minute >= 60:
-            next_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            next_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(
+                hours=1
+            )
         else:
             next_time = now.replace(minute=minute, second=0, microsecond=0)
 
@@ -469,9 +471,9 @@ def calculate_next_bar_time(timeframe: str, current_time: datetime | None = None
 
     elif timeframe == "1d":
         # 下一个 UTC 0 点
-        next_time = now.replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ) + timedelta(days=1)
+        next_time = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
+            days=1
+        )
 
     else:
         # 默认 15 分钟

@@ -311,7 +311,9 @@ class TestStrategyBase:
         assert intent.is_market_order
 
         # intent_sell with limit
-        intent = strategy.intent_sell("BTC", Decimal("0.5"), limit_price=Decimal("60000"))
+        intent = strategy.intent_sell(
+            "BTC", Decimal("0.5"), limit_price=Decimal("60000")
+        )
         assert intent.side == PositionSide.SHORT
         assert not intent.is_market_order
 

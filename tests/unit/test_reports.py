@@ -295,7 +295,9 @@ class TestReportGenerator:
             assert len(trades_df) == 2
 
     @patch("src.data.storage.influx_store.InfluxStore")
-    def test_generate_report_writes_to_influx(self, mock_influx_class: MagicMock) -> None:
+    def test_generate_report_writes_to_influx(
+        self, mock_influx_class: MagicMock
+    ) -> None:
         """测试写入 InfluxDB"""
         result = self._create_mock_result()
 

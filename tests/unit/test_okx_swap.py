@@ -3,9 +3,7 @@ OKX 永续合约 Broker 测试
 """
 
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from src.core.events import OrderSide, OrderStatus, OrderType
 from src.execution.adapters.okx_swap import (

@@ -13,7 +13,6 @@ Web 管理服务主入口
     python -m services.web.main
 """
 
-import asyncio
 from contextlib import asynccontextmanager
 
 from nicegui import app, ui
@@ -29,13 +28,13 @@ logger = get_logger(__name__)
 async def lifespan():
     """应用生命周期管理"""
     logger.info("web_service_starting")
-    
+
     # 初始化应用状态
     app.state = AppState()
     await app.state.initialize()
-    
+
     yield
-    
+
     # 清理资源
     await app.state.cleanup()
     logger.info("web_service_stopped")
@@ -46,34 +45,34 @@ def create_header():
     with ui.header().classes("items-center justify-between px-4 py-3"):
         with ui.row().classes("items-center gap-4"):
             ui.label("AlgorithmTrader").classes("text-2xl font-bold")
-            
+
             # 导航菜单
             with ui.row().classes("gap-2"):
                 ui.link("Dashboard", "/").classes("nav-link text-base")
                 ui.link("策略", "/strategies").classes("nav-link text-base")
                 ui.link("回测", "/backtests").classes("nav-link text-base")
                 ui.link("优化", "/optimization").classes("nav-link text-base")
-        
+
         # 暗色模式切换（三态：跟随系统、亮色、暗色）
         dark = ui.dark_mode()
-        
+
         def cycle_theme():
             """循环切换主题"""
             if dark.value is None:
                 dark.value = False  # 跟随系统 -> 亮色
             elif dark.value is False:
-                dark.value = True   # 亮色 -> 暗色
+                dark.value = True  # 亮色 -> 暗色
             else:
-                dark.value = None   # 暗色 -> 跟随系统
-        
+                dark.value = None  # 暗色 -> 跟随系统
+
         def get_theme_icon():
             if dark.value is None:
                 return "brightness_auto"  # 跟随系统
             elif dark.value:
-                return "dark_mode"        # 暗色
+                return "dark_mode"  # 暗色
             else:
-                return "light_mode"       # 亮色
-        
+                return "light_mode"  # 亮色
+
         def get_theme_tooltip():
             if dark.value is None:
                 return "跟随系统 (点击切换)"
@@ -81,13 +80,16 @@ def create_header():
                 return "暗色模式 (点击切换)"
             else:
                 return "亮色模式 (点击切换)"
-        
-        theme_btn = ui.button(icon=get_theme_icon(), on_click=cycle_theme).props("flat round")
+
+        theme_btn = ui.button(icon=get_theme_icon(), on_click=cycle_theme).props(
+            "flat round"
+        )
         theme_btn.tooltip(get_theme_tooltip())
 
 
 def create_layout(content_func):
     """创建页面布局的装饰器"""
+
     def wrapper():
         # 应用全局样式
         ui.add_head_html("""
@@ -180,12 +182,12 @@ def create_layout(content_func):
             .text-2xl { font-size: 1.75rem; }
         </style>
         """)
-        
+
         create_header()
-        
+
         with ui.column().classes("w-full max-w-7xl mx-auto p-4 gap-4"):
             content_func()
-    
+
     return wrapper
 
 
@@ -221,7 +223,7 @@ def optimization_page():
 def main():
     """Web 服务主入口"""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="AlgorithmTrader Web Service")
     parser.add_argument(
         "--host",
@@ -240,16 +242,16 @@ def main():
         action="store_true",
         help="Enable auto-reload for development",
     )
-    
+
     args = parser.parse_args()
-    
+
     logger.info(
         "web_service_config",
         host=args.host,
         port=args.port,
         reload=args.reload,
     )
-    
+
     ui.run(
         host=args.host,
         port=args.port,

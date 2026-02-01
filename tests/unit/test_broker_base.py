@@ -4,8 +4,6 @@ Broker 基类测试
 
 from decimal import Decimal
 
-import pytest
-
 from src.core.events import OrderSide, OrderStatus, OrderType
 from src.execution.broker_base import (
     Balance,

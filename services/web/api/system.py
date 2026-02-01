@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 async def get_health() -> dict[str, Any]:
     """
     获取系统健康状态
-    
+
     Returns:
         健康状态信息
     """
@@ -31,7 +31,7 @@ async def get_health() -> dict[str, Any]:
 async def get_services() -> list[dict[str, Any]]:
     """
     获取所有服务状态
-    
+
     Returns:
         服务状态列表
     """
@@ -46,7 +46,7 @@ async def get_services() -> list[dict[str, Any]]:
             }
             for s in services.values()
         ]
-    
+
     # 默认返回
     return [
         {"name": "collector", "status": "unknown", "message": "", "last_check": None},
@@ -59,7 +59,7 @@ async def get_services() -> list[dict[str, Any]]:
 async def get_stats() -> dict[str, Any]:
     """
     获取系统统计信息
-    
+
     Returns:
         统计信息
     """
@@ -76,10 +76,10 @@ async def get_stats() -> dict[str, Any]:
 async def get_recent_alerts(limit: int = 10) -> list[dict[str, Any]]:
     """
     获取最近告警
-    
+
     Args:
         limit: 最大返回数量
-        
+
     Returns:
         告警列表
     """

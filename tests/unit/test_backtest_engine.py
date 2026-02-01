@@ -167,14 +167,27 @@ class TestBacktestEngine:
     def _create_mock_data(self) -> pd.DataFrame:
         """创建模拟数据"""
         dates = pd.date_range("2025-01-01", periods=10, freq="15min", tz="UTC")
-        return pd.DataFrame({
-            "timestamp": dates,
-            "open": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
-            "high": [101, 102, 103, 104, 105, 106, 107, 108, 109, 110],
-            "low": [99, 100, 101, 102, 103, 104, 105, 106, 107, 108],
-            "close": [100.5, 101.5, 102.5, 103.5, 104.5, 105.5, 106.5, 107.5, 108.5, 109.5],
-            "volume": [1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900],
-        })
+        return pd.DataFrame(
+            {
+                "timestamp": dates,
+                "open": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
+                "high": [101, 102, 103, 104, 105, 106, 107, 108, 109, 110],
+                "low": [99, 100, 101, 102, 103, 104, 105, 106, 107, 108],
+                "close": [
+                    100.5,
+                    101.5,
+                    102.5,
+                    103.5,
+                    104.5,
+                    105.5,
+                    106.5,
+                    107.5,
+                    108.5,
+                    109.5,
+                ],
+                "volume": [1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900],
+            }
+        )
 
     def test_calculate_equity(self):
         """计算权益"""
@@ -198,11 +211,13 @@ class TestBacktestEngine:
 
     def test_execute_trade_buy(self):
         """执行买入交易"""
-        engine = BacktestEngine(BacktestConfig(
-            initial_capital=Decimal("100000"),
-            slippage_pct=Decimal("0"),
-            commission_rate=Decimal("0.001"),
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_capital=Decimal("100000"),
+                slippage_pct=Decimal("0"),
+                commission_rate=Decimal("0.001"),
+            )
+        )
 
         trade = engine._execute_trade(
             symbol="BTC",
@@ -219,9 +234,11 @@ class TestBacktestEngine:
 
     def test_execute_trade_insufficient_funds(self):
         """资金不足时无法交易"""
-        engine = BacktestEngine(BacktestConfig(
-            initial_capital=Decimal("1000"),
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_capital=Decimal("1000"),
+            )
+        )
 
         trade = engine._execute_trade(
             symbol="BTC",
@@ -236,10 +253,12 @@ class TestBacktestEngine:
 
     def test_process_target_position_long(self):
         """处理多头目标持仓"""
-        engine = BacktestEngine(BacktestConfig(
-            initial_capital=Decimal("100000"),
-            slippage_pct=Decimal("0"),
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_capital=Decimal("100000"),
+                slippage_pct=Decimal("0"),
+            )
+        )
 
         target = TargetPosition(
             symbol="BTC",
@@ -259,10 +278,12 @@ class TestBacktestEngine:
 
     def test_process_target_position_flat(self):
         """处理平仓目标"""
-        engine = BacktestEngine(BacktestConfig(
-            initial_capital=Decimal("100000"),
-            slippage_pct=Decimal("0"),
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_capital=Decimal("100000"),
+                slippage_pct=Decimal("0"),
+            )
+        )
 
         # 先开仓
         engine._get_position("BTC").update(

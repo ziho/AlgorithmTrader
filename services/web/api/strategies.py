@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 async def list_strategies() -> list[dict[str, Any]]:
     """
     获取所有策略列表
-    
+
     Returns:
         策略列表
     """
@@ -36,17 +36,17 @@ async def list_strategies() -> list[dict[str, Any]]:
             }
             for s in strategies.values()
         ]
-    
+
     return []
 
 
 async def get_strategy(name: str) -> dict[str, Any] | None:
     """
     获取单个策略详情
-    
+
     Args:
         name: 策略名称
-        
+
     Returns:
         策略详情或 None
     """
@@ -64,7 +64,7 @@ async def get_strategy(name: str) -> dict[str, Any] | None:
                 "current_position": strategy.current_position,
                 "today_pnl": strategy.today_pnl,
             }
-    
+
     return None
 
 
@@ -76,13 +76,13 @@ async def update_strategy(
 ) -> bool:
     """
     更新策略配置
-    
+
     Args:
         name: 策略名称
         enabled: 是否启用
         params: 策略参数
         symbols: 交易对列表
-        
+
     Returns:
         是否更新成功
     """
@@ -94,25 +94,25 @@ async def update_strategy(
             updates["params"] = params
         if symbols is not None:
             updates["symbols"] = symbols
-        
+
         success = app.state.update_strategy(name, **updates)
-        
+
         if success:
             logger.info("strategy_updated", name=name, updates=updates)
-        
+
         return success
-    
+
     return False
 
 
 async def toggle_strategy(name: str, enabled: bool) -> bool:
     """
     切换策略启用状态
-    
+
     Args:
         name: 策略名称
         enabled: 是否启用
-        
+
     Returns:
         是否操作成功
     """
@@ -122,11 +122,11 @@ async def toggle_strategy(name: str, enabled: bool) -> bool:
 async def get_strategy_logs(name: str, limit: int = 100) -> list[dict[str, Any]]:
     """
     获取策略运行日志
-    
+
     Args:
         name: 策略名称
         limit: 最大返回数量
-        
+
     Returns:
         日志列表
     """
@@ -135,7 +135,7 @@ async def get_strategy_logs(name: str, limit: int = 100) -> list[dict[str, Any]]
         {
             "timestamp": "2026-02-01T10:30:15",
             "level": "INFO",
-            "message": f"Bar received - BTC/USDT close=42350.5",
+            "message": "Bar received - BTC/USDT close=42350.5",
         },
         {
             "timestamp": "2026-02-01T10:30:15",

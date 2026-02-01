@@ -214,14 +214,18 @@ class OKXSpotBroker(BrokerBase):
         """解析订单类型"""
         return OrderType.LIMIT if order_type.lower() == "limit" else OrderType.MARKET
 
-    def _parse_order(self, raw_order: dict[str, Any], original_order: Order | None = None) -> Order:
+    def _parse_order(
+        self, raw_order: dict[str, Any], original_order: Order | None = None
+    ) -> Order:
         """解析 ccxt 订单为 Order 对象"""
         order = Order(
             symbol=raw_order.get("symbol", ""),
             side=self._parse_order_side(raw_order.get("side", "buy")),
             order_type=self._parse_order_type(raw_order.get("type", "market")),
             quantity=Decimal(str(raw_order.get("amount", 0))),
-            price=Decimal(str(raw_order.get("price", 0))) if raw_order.get("price") else None,
+            price=Decimal(str(raw_order.get("price", 0)))
+            if raw_order.get("price")
+            else None,
             client_order_id=raw_order.get("clientOrderId", "")
             or (original_order.client_order_id if original_order else ""),
             exchange_order_id=raw_order.get("id", ""),
@@ -344,7 +348,9 @@ class OKXSpotBroker(BrokerBase):
                 params,
             )
 
-            logger.info("order_cancelled", order_id=exchange_order_id or client_order_id)
+            logger.info(
+                "order_cancelled", order_id=exchange_order_id or client_order_id
+            )
 
             return BrokerResult.ok(raw_order)
 
@@ -439,7 +445,14 @@ class OKXSpotBroker(BrokerBase):
             # 返回所有非零余额
             balances = []
             for currency, data in raw_balance.items():
-                if currency in ("info", "free", "used", "total", "timestamp", "datetime"):
+                if currency in (
+                    "info",
+                    "free",
+                    "used",
+                    "total",
+                    "timestamp",
+                    "datetime",
+                ):
                     continue
                 if isinstance(data, dict):
                     total = float(data.get("total", 0) or 0)

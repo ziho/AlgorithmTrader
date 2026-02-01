@@ -185,7 +185,9 @@ class OrderIntent:
 
 
 # 策略输出类型
-StrategyOutput = TargetPosition | OrderIntent | list[TargetPosition] | list[OrderIntent] | None
+StrategyOutput = (
+    TargetPosition | OrderIntent | list[TargetPosition] | list[OrderIntent] | None
+)
 
 
 # 导出

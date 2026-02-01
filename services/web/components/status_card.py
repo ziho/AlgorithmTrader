@@ -15,7 +15,7 @@ def render(
 ):
     """
     渲染状态卡片
-    
+
     Args:
         title: 标题
         status: 状态 (healthy, warning, error, unknown)
@@ -48,20 +48,18 @@ def render(
             "label": "未知",
         },
     }
-    
+
     config = status_config.get(status, status_config["unknown"])
-    
+
     with ui.card().classes(f"card min-w-40 {config['bg']}"):
         with ui.row().classes("items-center gap-2"):
             ui.icon(config["icon"]).classes(f"text-xl {config['color']}")
             ui.label(title).classes("font-medium")
-        
+
         with ui.row().classes("items-center gap-2 mt-2"):
             ui.label(config["label"]).classes(f"text-sm {config['color']}")
             if message:
                 ui.label(f"- {message}").classes("text-sm text-gray-500")
-        
+
         if last_check:
-            ui.label(f"最后检查: {last_check}").classes(
-                "text-xs text-gray-400 mt-1"
-            )
+            ui.label(f"最后检查: {last_check}").classes("text-xs text-gray-400 mt-1")

@@ -86,9 +86,7 @@ class RiskContext:
 
     # 持仓信息
     positions: dict[str, Decimal] = field(default_factory=dict)  # symbol -> quantity
-    position_values: dict[str, Decimal] = field(
-        default_factory=dict
-    )  # symbol -> value
+    position_values: dict[str, Decimal] = field(default_factory=dict)  # symbol -> value
 
     # 历史最高权益 (用于计算回撤)
     peak_equity: Decimal = Decimal("0")
@@ -401,7 +399,9 @@ class RiskEngine:
 
         return results
 
-    def should_proceed(self, context: RiskContext) -> tuple[bool, list[RiskCheckResult]]:
+    def should_proceed(
+        self, context: RiskContext
+    ) -> tuple[bool, list[RiskCheckResult]]:
         """
         检查是否应该继续执行
 
