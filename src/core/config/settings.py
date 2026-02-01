@@ -65,6 +65,19 @@ class TelegramSettings(BaseSettings):
         return bool(self.bot_token.get_secret_value() and self.chat_id)
 
 
+class WebhookSettings(BaseSettings):
+    """Webhook 通知配置"""
+
+    model_config = SettingsConfigDict(env_prefix="WEBHOOK_")
+
+    url: str = Field(default="", description="Webhook URL (支持 Bark 或通用 Webhook)")
+
+    @property
+    def enabled(self) -> bool:
+        """检查 Webhook 是否已配置"""
+        return bool(self.url)
+
+
 class Settings(BaseSettings):
     """主配置类"""
 
@@ -95,6 +108,7 @@ class Settings(BaseSettings):
     ibkr: IBKRSettings = Field(default_factory=IBKRSettings)
     influxdb: InfluxDBSettings = Field(default_factory=InfluxDBSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    webhook: WebhookSettings = Field(default_factory=WebhookSettings)
 
     @property
     def is_prod(self) -> bool:

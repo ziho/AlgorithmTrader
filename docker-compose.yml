@@ -142,7 +142,156 @@ services:
     profiles:
       - dev  # 使用 --profile dev 启用
 
+  # ============================================
+  # Collector - 数据采集服务
+  # ============================================
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algorithmtrader-collector
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=collector
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: python -m services.collector.main
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - trading  # 使用 --profile trading 启用
+
+  # ============================================
+  # Scheduler - 统一调度服务
+  # ============================================
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algorithmtrader-scheduler
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=scheduler
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: python -m services.scheduler.main
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - trading  # 使用 --profile trading 启用
+
+  # ============================================
+  # Trader - 交易执行服务
+  # ============================================
+  trader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algorithmtrader-trader
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=trader
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: python -m services.trader.main
+    depends_on:
+      influxdb:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - trading  # 使用 --profile trading 启用
+
+  # ============================================
+  # Notifier - 通知服务
+  # ============================================
+  notifier:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algorithmtrader-notifier
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=notifier
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    command: python -m services.notifier.main
+    depends_on:
+      - influxdb
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - trading  # 使用 --profile trading 启用
+
 # ============================================
+
 # Networks
 # ============================================
 networks:

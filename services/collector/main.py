@@ -356,12 +356,149 @@ class DataCollector:
         """调度任务回调"""
         await self.collect_bars(symbol, timeframe, limit=5)
 
+    async def _scheduled_collect_funding_rate(self, symbol: Symbol):
+        """资金费率采集回调"""
+        await self.collect_funding_rate(symbol)
+
+    async def collect_funding_rate(self, symbol: Symbol) -> bool:
+        """
+        采集资金费率
+
+        Args:
+            symbol: 交易对 (永续合约)
+
+        Returns:
+            是否成功
+        """
+        try:
+            connector = await self._get_connector()
+
+            # 拉取当前资金费率
+            funding_data = await connector.fetch_funding_rate(symbol)
+
+            if not funding_data:
+                logger.warning(
+                    "funding_rate_empty",
+                    symbol=str(symbol),
+                )
+                return False
+
+            # 解析数据
+            funding_rate = float(funding_data.get("fundingRate", 0) or 0)
+            funding_ts = funding_data.get("timestamp")
+            next_funding_ts = funding_data.get("fundingTimestamp")
+
+            # 转换时间戳
+            import pandas as pd
+
+            funding_time = None
+            if funding_ts:
+                funding_time = pd.to_datetime(funding_ts, unit="ms", utc=True).to_pydatetime()
+
+            next_funding_time = None
+            if next_funding_ts:
+                next_funding_time = pd.to_datetime(next_funding_ts, unit="ms", utc=True).to_pydatetime()
+
+            # 写入 InfluxDB
+            influx_store = self._get_influx_store()
+            influx_store.write_funding_rate(
+                symbol=symbol,
+                funding_rate=funding_rate,
+                funding_timestamp=funding_time,
+                next_funding_time=next_funding_time,
+            )
+
+            logger.info(
+                "funding_rate_collected",
+                symbol=str(symbol),
+                funding_rate=funding_rate,
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                "collect_funding_rate_failed",
+                symbol=str(symbol),
+                error=str(e),
+            )
+            return False
+
+    async def collect_all_funding_rates(self) -> dict[str, bool]:
+        """
+        采集所有交易对的资金费率
+
+        Returns:
+            采集结果 {symbol: success}
+        """
+        results = {}
+
+        for symbol in self.symbols:
+            success = await self.collect_funding_rate(symbol)
+            results[str(symbol)] = success
+
+        return results
+
+    async def backfill_funding_rates(
+        self,
+        symbol: Symbol,
+        since: datetime,
+        limit: int = 100,
+    ) -> int:
+        """
+        回填资金费率历史
+
+        Args:
+            symbol: 交易对
+            since: 开始时间
+            limit: 数量限制
+
+        Returns:
+            写入的记录数
+        """
+        try:
+            connector = await self._get_connector()
+
+            # 拉取历史资金费率
+            df = await connector.fetch_funding_rate_history(
+                symbol=symbol,
+                since=since,
+                limit=limit,
+            )
+
+            if df.empty:
+                logger.warning(
+                    "funding_rate_history_empty",
+                    symbol=str(symbol),
+                )
+                return 0
+
+            # 写入 InfluxDB
+            influx_store = self._get_influx_store()
+            points = influx_store.write_funding_rates_batch(symbol, df)
+
+            logger.info(
+                "funding_rates_backfilled",
+                symbol=str(symbol),
+                points=points,
+            )
+
+            return points
+
+        except Exception as e:
+            logger.error(
+                "backfill_funding_rates_failed",
+                symbol=str(symbol),
+                error=str(e),
+            )
+            return 0
+
     def start(self):
         """启动调度器"""
         if self._running:
             return
 
-        # 为每个交易对和时间框架添加任务
+        # 为每个交易对和时间框架添加 K 线采集任务
         for symbol in self.symbols:
             for timeframe in self.timeframes:
                 trigger = self._create_cron_trigger(timeframe)
@@ -380,6 +517,24 @@ class DataCollector:
                     job_id=job_id,
                     trigger=str(trigger),
                 )
+
+            # 为每个交易对添加资金费率采集任务 (每8小时，与结算周期对齐)
+            funding_trigger = CronTrigger(hour="0,8,16", minute=1, second=0)
+            funding_job_id = f"funding_{symbol}"
+
+            self._scheduler.add_job(
+                self._scheduled_collect_funding_rate,
+                trigger=funding_trigger,
+                id=funding_job_id,
+                args=[symbol],
+                replace_existing=True,
+            )
+
+            logger.info(
+                "funding_job_scheduled",
+                job_id=funding_job_id,
+                trigger=str(funding_trigger),
+            )
 
         self._scheduler.start()
         self._running = True

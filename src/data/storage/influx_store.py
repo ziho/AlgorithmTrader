@@ -284,6 +284,93 @@ class InfluxStore:
 
         self.write_metric("risk_metrics", tags, fields, timestamp)
 
+    def write_funding_rate(
+        self,
+        symbol: Symbol,
+        funding_rate: float,
+        funding_timestamp: datetime | None = None,
+        next_funding_time: datetime | None = None,
+    ):
+        """
+        写入资金费率
+
+        Args:
+            symbol: 交易对 (永续合约)
+            funding_rate: 资金费率
+            funding_timestamp: 费率时间戳
+            next_funding_time: 下次结算时间
+        """
+        if funding_timestamp is None:
+            funding_timestamp = datetime.now(UTC)
+        elif funding_timestamp.tzinfo is None:
+            funding_timestamp = funding_timestamp.replace(tzinfo=UTC)
+
+        point = (
+            Point("funding_rates")
+            .tag("exchange", symbol.exchange.value)
+            .tag("symbol", f"{symbol.base}/{symbol.quote}")
+            .field("funding_rate", float(funding_rate))
+        )
+
+        if next_funding_time:
+            point = point.field("next_funding_time", next_funding_time.isoformat())
+
+        point = point.time(funding_timestamp, WritePrecision.S)
+
+        self._write_api.write(bucket=self.bucket, record=point)
+
+        logger.debug(
+            "influx_funding_rate_written",
+            symbol=str(symbol),
+            funding_rate=funding_rate,
+        )
+
+    def write_funding_rates_batch(
+        self,
+        symbol: Symbol,
+        df: pd.DataFrame,
+    ) -> int:
+        """
+        批量写入资金费率历史
+
+        Args:
+            symbol: 交易对
+            df: DataFrame with columns: timestamp, funding_rate
+
+        Returns:
+            写入的点数
+        """
+        if df.empty:
+            return 0
+
+        points = []
+
+        for _, row in df.iterrows():
+            ts = row["timestamp"]
+            if isinstance(ts, pd.Timestamp):
+                ts = ts.to_pydatetime()
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+
+            point = (
+                Point("funding_rates")
+                .tag("exchange", symbol.exchange.value)
+                .tag("symbol", f"{symbol.base}/{symbol.quote}")
+                .field("funding_rate", float(row["funding_rate"]))
+                .time(ts, WritePrecision.S)
+            )
+            points.append(point)
+
+        self._write_api.write(bucket=self.bucket, record=points)
+
+        logger.debug(
+            "influx_funding_rates_batch_written",
+            symbol=str(symbol),
+            points=len(points),
+        )
+
+        return len(points)
+
     def query_ohlcv(
         self,
         symbol: Symbol,

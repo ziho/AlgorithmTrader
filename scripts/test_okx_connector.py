@@ -52,6 +52,28 @@ async def test_fetch_ohlcv():
         print(f"24h 最低: {ticker['low']}")
         print(f"24h 成交量: {ticker['baseVolume']}")
 
+        # 拉取资金费率
+        print("\n\n拉取 BTC/USDT:USDT 当前资金费率...")
+        try:
+            funding = await connector.fetch_funding_rate("BTC/USDT:USDT")
+            print(f"当前费率: {funding['funding_rate']:.6%}")
+            print(f"下次结算: {funding['next_funding_time']}")
+            print(f"预估费率: {funding.get('estimated_rate', 'N/A')}")
+        except Exception as e:
+            print(f"获取资金费率失败: {e}")
+
+        # 拉取资金费率历史
+        print("\n\n拉取 BTC/USDT:USDT 资金费率历史 (最近 5 条)...")
+        try:
+            df_funding = await connector.fetch_funding_rate_history(
+                symbol="BTC/USDT:USDT",
+                limit=5,
+            )
+            print(f"\n获取到 {len(df_funding)} 条历史记录:")
+            print(df_funding.to_string())
+        except Exception as e:
+            print(f"获取资金费率历史失败: {e}")
+
     print("\n" + "=" * 50)
     print("测试完成!")
     print("=" * 50)

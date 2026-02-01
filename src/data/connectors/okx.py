@@ -211,6 +211,93 @@ class OKXConnector:
         exchange = await self._get_exchange()
         return await exchange.fetch_positions()
 
+    # ============================================
+    # 资金费率接口 (公开数据)
+    # ============================================
+
+    async def fetch_funding_rate(self, symbol: Symbol | str) -> dict[str, Any]:
+        """
+        拉取当前资金费率
+
+        Args:
+            symbol: 交易对 (永续合约)
+
+        Returns:
+            资金费率信息，包含:
+            - symbol: 交易对
+            - fundingRate: 当前资金费率
+            - fundingTimestamp: 下次结算时间
+            - datetime: ISO 时间字符串
+        """
+        exchange = await self._get_exchange()
+
+        # 转换为永续合约格式
+        if isinstance(symbol, Symbol):
+            ccxt_symbol = f"{symbol.base}/{symbol.quote}:{symbol.quote}"
+        else:
+            # 确保是永续格式
+            if ":" not in symbol:
+                base = symbol.replace("/USDT", "").replace("-USDT", "")
+                ccxt_symbol = f"{base}/USDT:USDT"
+            else:
+                ccxt_symbol = symbol
+
+        return await exchange.fetch_funding_rate(ccxt_symbol)
+
+    async def fetch_funding_rate_history(
+        self,
+        symbol: Symbol | str,
+        since: datetime | None = None,
+        limit: int = 100,
+    ) -> pd.DataFrame:
+        """
+        拉取资金费率历史
+
+        Args:
+            symbol: 交易对 (永续合约)
+            since: 开始时间
+            limit: 数量限制
+
+        Returns:
+            DataFrame with columns: timestamp, symbol, funding_rate
+        """
+        exchange = await self._get_exchange()
+
+        # 转换为永续合约格式
+        if isinstance(symbol, Symbol):
+            ccxt_symbol = f"{symbol.base}/{symbol.quote}:{symbol.quote}"
+        else:
+            if ":" not in symbol:
+                base = symbol.replace("/USDT", "").replace("-USDT", "")
+                ccxt_symbol = f"{base}/USDT:USDT"
+            else:
+                ccxt_symbol = symbol
+
+        # 转换时间
+        since_ts = int(since.timestamp() * 1000) if since else None
+
+        # 拉取数据
+        funding_history = await exchange.fetch_funding_rate_history(
+            symbol=ccxt_symbol,
+            since=since_ts,
+            limit=limit,
+        )
+
+        if not funding_history:
+            return pd.DataFrame(columns=["timestamp", "symbol", "funding_rate"])
+
+        # 转换为 DataFrame
+        records = []
+        for item in funding_history:
+            records.append({
+                "timestamp": pd.to_datetime(item.get("timestamp"), unit="ms", utc=True),
+                "symbol": item.get("symbol", ccxt_symbol),
+                "funding_rate": Decimal(str(item.get("fundingRate", 0) or 0)),
+            })
+
+        df = pd.DataFrame(records)
+        return df
+
 
 # 便捷函数
 async def fetch_ohlcv_simple(
@@ -233,8 +320,23 @@ async def fetch_ohlcv_simple(
         return await connector.fetch_ohlcv(symbol, timeframe, limit=limit)
 
 
+async def fetch_funding_rate_simple(symbol: str = "BTC/USDT") -> dict[str, Any]:
+    """
+    简单拉取资金费率（用于快速测试）
+
+    Args:
+        symbol: 交易对
+
+    Returns:
+        资金费率信息
+    """
+    async with OKXConnector() as connector:
+        return await connector.fetch_funding_rate(symbol)
+
+
 # 导出
 __all__ = [
     "OKXConnector",
     "fetch_ohlcv_simple",
+    "fetch_funding_rate_simple",
 ]
