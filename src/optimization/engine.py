@@ -177,14 +177,14 @@ class OptimizationEngine:
 
     def run(
         self,
-        data: pd.DataFrame,
+        data: dict[str, pd.DataFrame],
         backtest_config: BacktestConfig | None = None,
     ) -> OptimizationResult:
         """
         执行优化
 
         Args:
-            data: 回测数据
+            data: 回测数据字典 {symbol: DataFrame}
             backtest_config: 回测配置
 
         Returns:
@@ -222,7 +222,7 @@ class OptimizationEngine:
         self,
         trial_id: int,
         params: dict[str, Any],
-        data: pd.DataFrame,
+        data: dict[str, pd.DataFrame],
         bt_config: BacktestConfig,
     ) -> TrialResult:
         """执行单次试验"""
@@ -230,15 +230,40 @@ class OptimizationEngine:
         trial = TrialResult(trial_id=trial_id, params=params.copy())
 
         try:
-            # 创建策略
-            strategy = self.config.strategy_class(**params)
+            # 创建策略实例
+            from src.strategy.base import StrategyConfig
+
+            strategy_config = StrategyConfig(
+                name=f"{self.config.strategy_name or 'opt'}_{trial_id}",
+                params=params,
+            )
+            strategy = self.config.strategy_class(config=strategy_config)
 
             # 运行回测
-            engine = BacktestEngine(bt_config, strategy)
-            bt_result = engine.run(data)
+            engine = BacktestEngine(config=bt_config)
+            bt_result = engine.run_with_data(
+                strategy=strategy,
+                data=data,
+                timeframe="15m",  # 默认时间框架
+            )
 
-            # 计算指标
-            metrics = MetricsCalculator.calculate(bt_result)
+            # 使用 BacktestResult.summary 获取指标
+            summary = bt_result.summary
+
+            # 创建 PerformanceMetrics 对象
+            from src.backtest.metrics import TradeStats
+
+            metrics = PerformanceMetrics(
+                sharpe_ratio=summary.sharpe_ratio,
+                sortino_ratio=summary.sortino_ratio,
+                calmar_ratio=summary.calmar_ratio,
+                total_return=summary.total_return,
+                annualized_return=summary.annualized_return,
+                max_drawdown=summary.max_drawdown,
+                trade_stats=TradeStats(
+                    total_trades=summary.total_trades,
+                ),
+            )
 
             # 检查过滤条件
             if metrics.trade_stats.total_trades < self.config.min_trades:
@@ -257,14 +282,14 @@ class OptimizationEngine:
 
     async def run_async(
         self,
-        data: pd.DataFrame,
+        data: dict[str, pd.DataFrame],
         backtest_config: BacktestConfig | None = None,
     ) -> OptimizationResult:
         """
         异步执行优化（支持并行）
 
         Args:
-            data: 回测数据
+            data: 回测数据字典 {symbol: DataFrame}
             backtest_config: 回测配置
 
         Returns:

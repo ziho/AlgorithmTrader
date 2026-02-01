@@ -159,8 +159,77 @@ class AppState:
 
     async def _load_backtests(self):
         """加载回测历史"""
-        # TODO: 从文件系统或数据库加载
-        pass
+        import json
+        from pathlib import Path
+
+        # 从 config/backtests.json 加载
+        backtests_file = Path("config/backtests.json")
+        if backtests_file.exists():
+            try:
+                with open(backtests_file) as f:
+                    data = json.load(f)
+                    for bt_data in data.get("backtests", []):
+                        self._backtests.append(
+                            BacktestInfo(
+                                id=bt_data.get("id", "unknown"),
+                                strategy_name=bt_data.get("strategy_name", "unknown"),
+                                start_date=datetime.fromisoformat(
+                                    bt_data.get("start_date", datetime.now().isoformat())
+                                ),
+                                end_date=datetime.fromisoformat(
+                                    bt_data.get("end_date", datetime.now().isoformat())
+                                ),
+                                created_at=datetime.fromisoformat(
+                                    bt_data.get("created_at", datetime.now().isoformat())
+                                ),
+                                status=bt_data.get("status", "completed"),
+                                total_return=bt_data.get("total_return"),
+                                sharpe_ratio=bt_data.get("sharpe_ratio"),
+                                max_drawdown=bt_data.get("max_drawdown"),
+                                win_rate=bt_data.get("win_rate"),
+                                total_trades=bt_data.get("total_trades"),
+                            )
+                        )
+                logger.info("backtests_loaded", count=len(self._backtests))
+            except Exception as e:
+                logger.warning("load_backtests_from_json_failed", error=str(e))
+
+        # 从 reports 目录扫描
+        reports_dir = Path("reports")
+        if reports_dir.exists():
+            for report_dir in reports_dir.iterdir():
+                if report_dir.is_dir():
+                    summary_file = report_dir / "summary.json"
+                    if summary_file.exists():
+                        try:
+                            with open(summary_file) as f:
+                                summary = json.load(f)
+                                # 检查是否已存在
+                                run_id = summary.get("run_id", report_dir.name)
+                                if not any(bt.id == run_id for bt in self._backtests):
+                                    self._backtests.append(
+                                        BacktestInfo(
+                                            id=run_id,
+                                            strategy_name=summary.get("strategy_name", "unknown"),
+                                            start_date=datetime.fromisoformat(
+                                                summary.get("start_date", datetime.now().isoformat())
+                                            ) if summary.get("start_date") else datetime.now(),
+                                            end_date=datetime.fromisoformat(
+                                                summary.get("end_date", datetime.now().isoformat())
+                                            ) if summary.get("end_date") else datetime.now(),
+                                            created_at=datetime.fromisoformat(
+                                                summary.get("run_timestamp", datetime.now().isoformat())
+                                            ),
+                                            status="completed",
+                                            total_return=summary.get("total_return"),
+                                            sharpe_ratio=summary.get("metrics", {}).get("sharpe_ratio"),
+                                            max_drawdown=summary.get("metrics", {}).get("max_drawdown"),
+                                            win_rate=summary.get("metrics", {}).get("trade_stats", {}).get("win_rate"),
+                                            total_trades=summary.get("metrics", {}).get("trade_stats", {}).get("total_trades"),
+                                        )
+                                    )
+                        except Exception as e:
+                            logger.warning("load_report_failed", path=str(summary_file), error=str(e))
 
     async def _background_update(self):
         """后台状态更新"""
@@ -176,15 +245,58 @@ class AppState:
 
     async def _check_services(self):
         """检查服务状态"""
-        for service_name, status in self._services.items():
+        import aiohttp
+
+        # 检查 InfluxDB
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    "http://localhost:8086/health",
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as resp:
+                    if resp.status == 200:
+                        self._services["influxdb"].status = "healthy"
+                        self._services["influxdb"].message = ""
+                    else:
+                        self._services["influxdb"].status = "warning"
+                        self._services["influxdb"].message = f"HTTP {resp.status}"
+        except Exception as e:
+            self._services["influxdb"].status = "error"
+            self._services["influxdb"].message = str(e)
+        self._services["influxdb"].last_check = datetime.now()
+
+        # 检查其他服务（通过 docker ps 或进程检查）
+        import subprocess
+
+        for service_name in ["collector", "trader", "scheduler"]:
             try:
-                # TODO: 实现真正的健康检查
-                status.status = "healthy"
-                status.last_check = datetime.now()
+                result = subprocess.run(
+                    ["docker", "ps", "--filter", f"name=algorithmtrader-{service_name}", "--format", "{{.Status}}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                status_output = result.stdout.strip()
+                if status_output and "Up" in status_output:
+                    self._services[service_name].status = "healthy"
+                    self._services[service_name].message = status_output
+                elif status_output:
+                    self._services[service_name].status = "warning"
+                    self._services[service_name].message = status_output
+                else:
+                    self._services[service_name].status = "stopped"
+                    self._services[service_name].message = "Container not running"
+            except subprocess.TimeoutExpired:
+                self._services[service_name].status = "unknown"
+                self._services[service_name].message = "Check timed out"
+            except FileNotFoundError:
+                # Docker not installed, check if running locally via process
+                self._services[service_name].status = "unknown"
+                self._services[service_name].message = "Docker not available"
             except Exception as e:
-                status.status = "error"
-                status.message = str(e)
-                status.last_check = datetime.now()
+                self._services[service_name].status = "error"
+                self._services[service_name].message = str(e)
+            self._services[service_name].last_check = datetime.now()
 
     # ==================== 公共方法 ====================
 

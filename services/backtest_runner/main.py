@@ -220,13 +220,17 @@ class BacktestRunner:
             backtest_config = BacktestConfig(
                 initial_capital=task.initial_capital,
                 commission_rate=self.config.default_commission,
-                slippage_rate=self.config.default_slippage,
+                slippage_pct=self.config.default_slippage,
             )
 
             engine = BacktestEngine(config=backtest_config)
 
-            # 运行回测
-            result = engine.run(strategy=strategy, data=data)
+            # 运行回测（使用 run_with_data 方法）
+            result = engine.run_with_data(
+                strategy=strategy,
+                data=data,
+                timeframe=task.timeframe,
+            )
 
             task.result = result
             task.status = "completed"
@@ -293,18 +297,20 @@ class BacktestRunner:
         report_paths = []
 
         report_config = ReportConfig(
-            output_dir=self.config.output_dir,
-            include_trades=True,
+            output_dir=str(self.config.output_dir),
+            save_json=True,
+            save_parquet=True,
             write_to_influx=self.config.write_to_influx,
         )
-        generator = ReportGenerator(report_config)
+        generator = ReportGenerator(config=report_config)
 
         for result in self._results:
             try:
                 report = generator.generate_report(result)
-                if report.html_path:
-                    report_paths.append(report.html_path)
-                    logger.info("report_generated", path=str(report.html_path))
+                if report.get("saved_files"):
+                    for path in report["saved_files"]:
+                        report_paths.append(Path(path))
+                        logger.info("report_generated", path=path)
             except Exception as e:
                 logger.error("report_generation_failed", error=str(e))
 

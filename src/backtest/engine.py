@@ -180,6 +180,36 @@ class BacktestConfig:
 
 
 @dataclass
+class BacktestSummary:
+    """回测摘要（便于快速访问核心指标）"""
+
+    total_return: float = 0.0
+    annualized_return: float = 0.0
+    sharpe_ratio: float = 0.0
+    sortino_ratio: float = 0.0
+    max_drawdown: float = 0.0
+    calmar_ratio: float = 0.0
+    win_rate: float = 0.0
+    profit_factor: float = 0.0
+    total_trades: int = 0
+    total_pnl: Decimal = Decimal("0")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total_return": round(self.total_return, 6),
+            "annualized_return": round(self.annualized_return, 6),
+            "sharpe_ratio": round(self.sharpe_ratio, 4),
+            "sortino_ratio": round(self.sortino_ratio, 4),
+            "max_drawdown": round(self.max_drawdown, 6),
+            "calmar_ratio": round(self.calmar_ratio, 4),
+            "win_rate": round(self.win_rate, 4),
+            "profit_factor": round(self.profit_factor, 4),
+            "total_trades": self.total_trades,
+            "total_pnl": str(self.total_pnl),
+        }
+
+
+@dataclass
 class BacktestResult:
     """回测结果"""
 
@@ -206,6 +236,87 @@ class BacktestResult:
     end_time: datetime | None = None
     run_duration_seconds: float = 0.0
 
+    # 缓存的摘要
+    _summary: BacktestSummary | None = field(default=None, repr=False)
+
+    @property
+    def summary(self) -> BacktestSummary:
+        """
+        获取回测摘要（核心指标）
+
+        延迟计算并缓存结果
+        """
+        if self._summary is not None:
+            return self._summary
+
+        import numpy as np
+
+        summary = BacktestSummary()
+
+        # 计算总收益
+        initial_capital = self.config.initial_capital
+        if initial_capital > 0:
+            summary.total_pnl = self.final_equity - initial_capital
+            summary.total_return = float(summary.total_pnl / initial_capital)
+
+        summary.total_trades = self.total_trades
+
+        # 从权益曲线计算指标
+        if self.equity_curve:
+            equity_values = np.array(
+                [float(ep.equity) for ep in self.equity_curve],
+                dtype=np.float64,
+            )
+
+            if len(equity_values) >= 2:
+                # 收益率序列
+                returns = np.diff(equity_values) / equity_values[:-1]
+
+                # 计算交易天数
+                timestamps = [ep.timestamp for ep in self.equity_curve]
+                unique_dates = {ts.date() for ts in timestamps}
+                trading_days = len(unique_dates)
+
+                # 年化收益率
+                if trading_days > 0:
+                    years = trading_days / 252
+                    if years > 0:
+                        summary.annualized_return = (
+                            (1 + summary.total_return) ** (1 / years) - 1
+                        )
+
+                # 波动率和夏普比率
+                if len(returns) > 1:
+                    vol = float(np.std(returns, ddof=1) * np.sqrt(252))
+                    mean_return = float(np.mean(returns) * 252)
+                    if vol > 0:
+                        summary.sharpe_ratio = mean_return / vol
+
+                    # 下行波动率和索提诺
+                    neg_returns = returns[returns < 0]
+                    if len(neg_returns) > 0:
+                        down_vol = float(np.std(neg_returns, ddof=1) * np.sqrt(252))
+                        if down_vol > 0:
+                            summary.sortino_ratio = mean_return / down_vol
+
+                # 最大回撤
+                peak = np.maximum.accumulate(equity_values)
+                drawdown = (peak - equity_values) / peak
+                summary.max_drawdown = float(np.max(drawdown))
+
+                # 卡尔玛比率
+                if summary.max_drawdown > 0:
+                    summary.calmar_ratio = summary.annualized_return / summary.max_drawdown
+
+        # 从交易记录计算胜率
+        if self.trades:
+            # 需要从持仓变化计算盈亏，这里简化处理
+            summary.total_trades = len(self.trades)
+
+        # 缓存结果
+        object.__setattr__(self, "_summary", summary)
+        return summary
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "config": self.config.to_dict(),
@@ -219,6 +330,7 @@ class BacktestResult:
             "run_duration_seconds": self.run_duration_seconds,
             "equity_curve_length": len(self.equity_curve),
             "trades_count": len(self.trades),
+            "summary": self.summary.to_dict(),
         }
 
 
@@ -615,6 +727,222 @@ class BacktestEngine:
 
         return result
 
+    def run_with_data(
+        self,
+        strategy: StrategyBase,
+        data: dict[str, pd.DataFrame],
+        timeframe: str = "15m",
+    ) -> BacktestResult:
+        """
+        使用预加载数据运行回测
+
+        这是 run() 的替代方法，允许直接传入已加载的数据字典，
+        而不是从 ParquetStore 读取。适用于批量回测和优化场景。
+
+        Args:
+            strategy: 策略实例
+            data: 数据字典 {symbol_str: DataFrame}，每个 DataFrame 需包含
+                  timestamp, open, high, low, close, volume 列
+            timeframe: 时间框架字符串，如 "15m", "1h"
+
+        Returns:
+            回测结果
+        """
+        import time
+
+        run_start = time.time()
+
+        # 重置状态
+        self._cash = self.config.initial_capital
+        self._positions = {}
+        self._equity_curve = []
+        self._trades = []
+        self._peak_equity = self.config.initial_capital
+
+        if not data:
+            logger.warning("no_data_provided")
+            return BacktestResult(
+                config=self.config,
+                strategy_config=strategy.config,
+            )
+
+        # 确保数据有正确的索引
+        processed_data: dict[str, pd.DataFrame] = {}
+        for symbol_str, df in data.items():
+            if not df.empty:
+                processed_data[symbol_str] = df.reset_index(drop=True)
+                logger.info(
+                    "data_provided",
+                    symbol=symbol_str,
+                    rows=len(df),
+                )
+
+        if not processed_data:
+            logger.warning("all_data_empty")
+            return BacktestResult(
+                config=self.config,
+                strategy_config=strategy.config,
+            )
+
+        # 获取所有时间戳的并集
+        all_timestamps = set()
+        for df in processed_data.values():
+            all_timestamps.update(df["timestamp"].tolist())
+        all_timestamps = sorted(all_timestamps)
+
+        logger.info(
+            "backtest_start_with_data",
+            bars=len(all_timestamps),
+            symbols=len(processed_data),
+        )
+
+        # 初始化策略
+        strategy.initialize()
+
+        # 主循环
+        for ts in all_timestamps:
+            current_prices: dict[str, Decimal] = {}
+            next_opens: dict[str, Decimal] = {}
+            bar_volumes: dict[str, Decimal] = {}
+
+            # 获取每个品种的当前 bar
+            for symbol_str, df in processed_data.items():
+                mask = df["timestamp"] == ts
+                if not mask.any():
+                    continue
+
+                idx = df.index[mask][0]
+                row = df.iloc[idx]
+
+                current_prices[symbol_str] = Decimal(str(row["close"]))
+                bar_volumes[symbol_str] = Decimal(str(row["volume"]))
+
+                # 获取下一根 bar 的 open（用于成交）
+                if idx + 1 < len(df):
+                    next_opens[symbol_str] = Decimal(str(df.iloc[idx + 1]["open"]))
+                else:
+                    next_opens[symbol_str] = current_prices[symbol_str]
+
+                # 准备历史数据
+                start_idx = max(0, idx - self.config.lookback_bars)
+                history_df = df.iloc[start_idx:idx][
+                    ["timestamp", "open", "high", "low", "close", "volume"]
+                ].copy()
+
+                # 创建 BarFrame 并调用策略
+                bar_frame = self._create_bar_frame(
+                    symbol=symbol_str,
+                    timeframe=timeframe,
+                    row=row,
+                    history_df=history_df,
+                )
+
+                # 策略决策
+                output = strategy.on_bar(bar_frame)
+
+                # 处理策略输出
+                if output is not None:
+                    outputs = output if isinstance(output, list) else [output]
+                    for out in outputs:
+                        trade = None
+                        if isinstance(out, TargetPosition):
+                            trade = self._process_target_position(
+                                target=out,
+                                next_open=next_opens.get(
+                                    symbol_str, current_prices[symbol_str]
+                                ),
+                                bar_volume=bar_volumes[symbol_str],
+                                timestamp=ts.to_pydatetime()
+                                if hasattr(ts, "to_pydatetime")
+                                else ts,
+                            )
+                        elif isinstance(out, OrderIntent):
+                            trade = self._process_order_intent(
+                                intent=out,
+                                next_open=next_opens.get(
+                                    out.symbol,
+                                    current_prices.get(out.symbol, Decimal("0")),
+                                ),
+                                bar_volume=bar_volumes.get(out.symbol, Decimal("0")),
+                                timestamp=ts.to_pydatetime()
+                                if hasattr(ts, "to_pydatetime")
+                                else ts,
+                            )
+
+                        # 通知策略成交
+                        if trade:
+                            fill = FillEvent(
+                                symbol=trade.symbol,
+                                side=trade.side,
+                                quantity=trade.quantity,
+                                price=trade.price,
+                                commission=trade.commission,
+                            )
+                            strategy.on_fill(fill)
+
+            # 记录权益曲线
+            equity = self._calculate_equity(current_prices)
+            self._peak_equity = max(self._peak_equity, equity)
+            drawdown = self._peak_equity - equity
+            drawdown_pct = (
+                drawdown / self._peak_equity if self._peak_equity > 0 else Decimal("0")
+            )
+
+            position_value = equity - self._cash
+            point_ts = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+            self._equity_curve.append(
+                EquityPoint(
+                    timestamp=point_ts,
+                    equity=equity,
+                    cash=self._cash,
+                    position_value=position_value,
+                    drawdown=drawdown,
+                    drawdown_pct=drawdown_pct,
+                )
+            )
+
+        # 策略停止
+        strategy.on_stop()
+
+        run_duration = time.time() - run_start
+
+        # 计算最终状态
+        final_prices = {}
+        for symbol_str, df in processed_data.items():
+            if not df.empty:
+                final_prices[symbol_str] = Decimal(str(df.iloc[-1]["close"]))
+
+        final_equity = self._calculate_equity(final_prices)
+        total_commission = sum(t.commission for t in self._trades)
+
+        result = BacktestResult(
+            config=self.config,
+            strategy_config=strategy.config,
+            equity_curve=self._equity_curve,
+            trades=self._trades,
+            final_equity=final_equity,
+            final_cash=self._cash,
+            final_positions=self._positions.copy(),
+            total_trades=len(self._trades),
+            total_commission=total_commission,
+            start_time=all_timestamps[0].to_pydatetime()
+            if hasattr(all_timestamps[0], "to_pydatetime")
+            else all_timestamps[0],
+            end_time=all_timestamps[-1].to_pydatetime()
+            if hasattr(all_timestamps[-1], "to_pydatetime")
+            else all_timestamps[-1],
+            run_duration_seconds=run_duration,
+        )
+
+        logger.info(
+            "backtest_complete",
+            final_equity=str(final_equity),
+            total_trades=len(self._trades),
+            run_duration=f"{run_duration:.2f}s",
+        )
+
+        return result
+
 
 # 导出
 __all__ = [
@@ -623,5 +951,6 @@ __all__ = [
     "EquityPoint",
     "BacktestConfig",
     "BacktestResult",
+    "BacktestSummary",
     "BacktestEngine",
 ]
