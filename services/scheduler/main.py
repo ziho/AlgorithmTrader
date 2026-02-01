@@ -171,12 +171,78 @@ class SchedulerService:
         """
         清理任务
 
-        清理过期数据、日志等
+        清理过期数据、日志、临时文件等
         """
-        results = {}
+        import shutil
+        from pathlib import Path
 
-        # 清理过期的已处理 bar 记录等
-        # TODO: 实现具体清理逻辑
+        results = {
+            "logs_cleaned": 0,
+            "cache_cleaned": 0,
+            "temp_files_cleaned": 0,
+            "old_reports_cleaned": 0,
+        }
+
+        # 1. 清理旧日志文件 (保留最近 7 天)
+        try:
+            logs_dir = Path("logs")
+            if logs_dir.exists():
+                now = datetime.now(UTC)
+                max_age_days = 7
+                for log_file in logs_dir.glob("*.log*"):
+                    if log_file.is_file():
+                        mtime = datetime.fromtimestamp(log_file.stat().st_mtime, UTC)
+                        age_days = (now - mtime).days
+                        if age_days > max_age_days:
+                            log_file.unlink()
+                            results["logs_cleaned"] += 1
+        except Exception as e:
+            logger.warning("log_cleanup_failed", error=str(e))
+
+        # 2. 清理 Python 缓存
+        try:
+            for cache_dir in Path(".").rglob("__pycache__"):
+                if cache_dir.is_dir():
+                    shutil.rmtree(cache_dir, ignore_errors=True)
+                    results["cache_cleaned"] += 1
+        except Exception as e:
+            logger.warning("cache_cleanup_failed", error=str(e))
+
+        # 3. 清理临时文件
+        try:
+            temp_patterns = ["*.tmp", "*.temp", ".*.swp"]
+            for pattern in temp_patterns:
+                for temp_file in Path(".").rglob(pattern):
+                    if temp_file.is_file():
+                        temp_file.unlink()
+                        results["temp_files_cleaned"] += 1
+        except Exception as e:
+            logger.warning("temp_cleanup_failed", error=str(e))
+
+        # 4. 清理旧的回测报告 (保留最近 30 天)
+        try:
+            reports_dir = Path("reports")
+            if reports_dir.exists():
+                now = datetime.now(UTC)
+                max_age_days = 30
+                for report_file in reports_dir.glob("backtest_report_*"):
+                    if report_file.is_file():
+                        mtime = datetime.fromtimestamp(report_file.stat().st_mtime, UTC)
+                        age_days = (now - mtime).days
+                        if age_days > max_age_days:
+                            report_file.unlink()
+                            results["old_reports_cleaned"] += 1
+        except Exception as e:
+            logger.warning("reports_cleanup_failed", error=str(e))
+
+        # 5. 清理 ruff 缓存
+        try:
+            ruff_cache = Path(".ruff_cache")
+            if ruff_cache.exists():
+                shutil.rmtree(ruff_cache, ignore_errors=True)
+                results["cache_cleaned"] += 1
+        except Exception as e:
+            logger.warning("ruff_cache_cleanup_failed", error=str(e))
 
         logger.info("cleanup_completed", **results)
 

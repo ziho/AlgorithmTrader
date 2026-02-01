@@ -155,9 +155,18 @@ async def cancel_task(task_id: str) -> bool:
     Returns:
         是否取消成功
     """
-    # TODO: 实现任务取消逻辑
-    logger.info("optimization_task_cancelled", id=task_id)
-    return True
+    if hasattr(app, "state") and app.state:
+        tasks = app.state.get_optimization_tasks()
+        for task in tasks:
+            if task.id == task_id:
+                # 更新任务状态为 cancelled
+                task.status = "cancelled"
+                task.completed_at = datetime.now()
+                logger.info("optimization_task_cancelled", id=task_id)
+                return True
+
+    logger.warning("optimization_task_not_found", id=task_id)
+    return False
 
 
 async def apply_params(
@@ -165,7 +174,7 @@ async def apply_params(
     params: dict[str, Any],
 ) -> bool:
     """
-    应用优化结果的参数
+    应用优化结果的参数到策略配置
 
     Args:
         task_id: 任务 ID
@@ -174,9 +183,69 @@ async def apply_params(
     Returns:
         是否应用成功
     """
-    # TODO: 实现参数应用逻辑
-    logger.info("optimization_params_applied", task_id=task_id, params=params)
-    return True
+    import json
+    from pathlib import Path
+
+    # 获取任务信息
+    task = await get_task(task_id)
+    if not task:
+        logger.warning("optimization_task_not_found", id=task_id)
+        return False
+
+    strategy_name = task.get("strategy_name")
+    if not strategy_name:
+        logger.warning("strategy_name_not_found", task_id=task_id)
+        return False
+
+    # 更新策略配置文件
+    config_path = Path("config/strategies.json")
+    try:
+        if config_path.exists():
+            with open(config_path) as f:
+                strategies_config = json.load(f)
+        else:
+            strategies_config = {"strategies": []}
+
+        # 查找并更新策略配置
+        found = False
+        for strategy in strategies_config.get("strategies", []):
+            if (
+                strategy.get("name") == strategy_name
+                or strategy.get("class_name") == strategy_name
+            ):
+                strategy["params"] = {**strategy.get("params", {}), **params}
+                strategy["updated_at"] = datetime.now().isoformat()
+                strategy["optimized_from"] = task_id
+                found = True
+                break
+
+        if not found:
+            # 添加新的策略配置
+            strategies_config.setdefault("strategies", []).append(
+                {
+                    "name": strategy_name,
+                    "params": params,
+                    "updated_at": datetime.now().isoformat(),
+                    "optimized_from": task_id,
+                }
+            )
+
+        # 保存配置
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w") as f:
+            json.dump(strategies_config, f, indent=2, default=str)
+
+        logger.info(
+            "optimization_params_applied",
+            task_id=task_id,
+            strategy=strategy_name,
+            params=params,
+        )
+        return True
+
+    except Exception as e:
+        logger.error("apply_params_failed", task_id=task_id, error=str(e))
+        return False
 
 
 async def get_pareto_front(task_id: str) -> list[dict[str, Any]]:

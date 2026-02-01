@@ -15,14 +15,18 @@ import signal
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+import pandas as pd
 import structlog
 
 from src.core.config import get_settings
+from src.core.instruments import Exchange, Symbol
+from src.core.timeframes import Timeframe
 from src.core.typing import BarFrame, OrderIntent, PositionSide, TargetPosition
+from src.data.storage.parquet_store import ParquetStore
 from src.execution.adapters.okx_spot import OKXSpotBroker
 from src.execution.broker_base import BrokerBase, Position
 from src.execution.order_manager import OrderManager
@@ -140,8 +144,15 @@ class LiveTrader:
         # 初始化通知器
         self._notifier = get_notifier()
 
+        # 初始化数据存储
+        self._parquet_store = ParquetStore()
+
         # 当前持仓缓存
         self._positions: dict[str, Position] = {}
+
+        # 历史数据缓存 (symbol -> DataFrame)
+        self._history_cache: dict[str, pd.DataFrame] = {}
+        self._history_lookback = 100  # 缓存的历史 bar 数量
 
         # 幂等性: bar 时间戳 -> 是否已处理
         self._processed_bars: set[str] = set()
@@ -376,26 +387,150 @@ class LiveTrader:
         """
         获取 Bar 数据
 
-        TODO: 从 ParquetStore 或 InfluxDB 获取真实数据
+        从 ParquetStore 获取历史数据，结合实时 ticker 获取最新价格
         """
-        # 获取当前价格
+        # 解析 symbol
+        if "/" in symbol:
+            base, quote = symbol.split("/")
+        else:
+            base = symbol
+            quote = "USDT"
+
+        sym = Symbol(exchange=Exchange.OKX, base=base, quote=quote)
+        tf = Timeframe(self.config.timeframe)
+
+        # 获取当前价格 (实时 ticker)
         ticker_result = self._broker.get_ticker(symbol)
         if not ticker_result.success:
+            logger.warning("ticker_fetch_failed", symbol=symbol)
             return None
 
         ticker = ticker_result.data
-        close_price = Decimal(str(ticker.get("last", 0)))
+        current_price = Decimal(str(ticker.get("last", 0)))
+        current_volume = Decimal(str(ticker.get("baseVolume", 0)))
 
+        # 尝试从缓存或 ParquetStore 获取历史数据
+        history_df = self._get_history_data(sym, tf, bar_time)
+
+        # 构建 BarFrame
+        # 如果有历史数据，使用历史数据的 OHLC；否则使用当前价格
+        if history_df is not None and not history_df.empty:
+            # 查找对应时间的 bar
+            bar_time_utc = (
+                bar_time.replace(tzinfo=UTC) if bar_time.tzinfo is None else bar_time
+            )
+            matching = history_df[history_df["timestamp"] == bar_time_utc]
+
+            if not matching.empty:
+                row = matching.iloc[-1]
+                return BarFrame(
+                    symbol=f"OKX:{symbol}",
+                    timeframe=self.config.timeframe,
+                    timestamp=bar_time,
+                    open=Decimal(str(row["open"])),
+                    high=Decimal(str(row["high"])),
+                    low=Decimal(str(row["low"])),
+                    close=Decimal(str(row["close"])),
+                    volume=Decimal(str(row["volume"])),
+                    history=history_df[
+                        ["open", "high", "low", "close", "volume"]
+                    ].copy(),
+                )
+
+            # 没有精确匹配，使用最近的历史数据 + 当前价格
+            return BarFrame(
+                symbol=f"OKX:{symbol}",
+                timeframe=self.config.timeframe,
+                timestamp=bar_time,
+                open=current_price,
+                high=current_price,
+                low=current_price,
+                close=current_price,
+                volume=current_volume,
+                history=history_df[["open", "high", "low", "close", "volume"]].copy(),
+            )
+
+        # 没有历史数据，返回仅包含当前价格的 BarFrame
         return BarFrame(
             symbol=f"OKX:{symbol}",
             timeframe=self.config.timeframe,
             timestamp=bar_time,
-            open=close_price,
-            high=close_price,
-            low=close_price,
-            close=close_price,
-            volume=Decimal(str(ticker.get("baseVolume", 0))),
+            open=current_price,
+            high=current_price,
+            low=current_price,
+            close=current_price,
+            volume=current_volume,
         )
+
+    def _get_history_data(
+        self, symbol: Symbol, timeframe: Timeframe, bar_time: datetime
+    ) -> pd.DataFrame | None:
+        """
+        获取历史数据
+
+        优先从缓存获取，如果缓存过期则从 ParquetStore 读取
+        """
+        cache_key = f"{symbol}_{timeframe.value}"
+
+        # 检查缓存
+        if cache_key in self._history_cache:
+            cached_df = self._history_cache[cache_key]
+            if not cached_df.empty:
+                # 检查缓存是否足够新
+                last_ts = cached_df["timestamp"].max()
+                if isinstance(last_ts, pd.Timestamp):
+                    last_ts = last_ts.to_pydatetime()
+                bar_time_utc = (
+                    bar_time.replace(tzinfo=UTC)
+                    if bar_time.tzinfo is None
+                    else bar_time
+                )
+
+                # 如果缓存的最后一条数据在当前 bar 时间之前不超过 2 个 bar 周期，使用缓存
+                tf_minutes = timeframe.to_minutes()
+                if (
+                    last_ts
+                    and (bar_time_utc - last_ts).total_seconds() < tf_minutes * 60 * 2
+                ):
+                    return cached_df
+
+        # 从 ParquetStore 读取
+        try:
+            # 计算需要读取的时间范围
+            tf_minutes = timeframe.to_minutes()
+            lookback_minutes = tf_minutes * self._history_lookback
+            start_time = bar_time - timedelta(minutes=lookback_minutes)
+
+            df = self._parquet_store.read(
+                symbol=symbol,
+                timeframe=timeframe,
+                start=start_time,
+                end=bar_time,
+            )
+
+            if not df.empty:
+                # 确保 timestamp 列是 datetime 类型
+                df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+                df = df.sort_values("timestamp").reset_index(drop=True)
+
+                # 更新缓存
+                self._history_cache[cache_key] = df
+
+                logger.debug(
+                    "history_data_loaded",
+                    symbol=str(symbol),
+                    rows=len(df),
+                )
+
+            return df
+
+        except Exception as e:
+            logger.warning(
+                "history_data_load_failed",
+                symbol=str(symbol),
+                error=str(e),
+            )
+            return None
 
     def _process_target_position(self, target: TargetPosition) -> None:
         """
