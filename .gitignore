@@ -24,6 +24,8 @@ research/**
 !research/.gitkeep
 !research/notebooks/.gitkeep
 !research/playbooks/.gitkeep
+reports/**
+!reports/.gitkeep
 
 # logs
 logs/
@@ -42,3 +44,6 @@ loki-data/
 # mac/linux noise
 .DS_Store
 Thumbs.db
+
+# third-party
+third-party/

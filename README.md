@@ -233,6 +233,29 @@ trader 服务
 python scripts/smoke_test.py
 ```
 
+## Walk-Forward 验证（防过拟合）
+
+使用新增的验证器在滑动窗口上优化并验证策略：
+
+```python
+from src.optimization.walk_forward import WalkForwardValidator, WalkForwardConfig
+from src.optimization.objectives import MaximizeSharpe
+from src.optimization.methods import GridSearch
+from my_strategies import MyStrategy
+
+config = WalkForwardConfig(train_period_days=180, test_period_days=30, n_splits=6)
+validator = WalkForwardValidator(config)
+result = validator.run(
+    strategy_class=MyStrategy,
+    data={"BTC-USDT": your_dataframe},  # DataFrame 需含 timestamp/open/high/low/close/volume
+    param_space={"fast": {"min": 5, "max": 20, "step": 5}},
+    objective=MaximizeSharpe(),
+    search_method=GridSearch(),
+    timeframe="15m",
+)
+print(result.is_robust, result.avg_test_sharpe)
+```
+
 ## 测试
 
 ```bash

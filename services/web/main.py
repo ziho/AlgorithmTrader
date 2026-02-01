@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 
 from nicegui import app, ui
 
-from services.web.pages import backtests, dashboard, optimization, strategies
+from services.web.pages import backtests, dashboard, data, optimization, settings, strategies
 from services.web.state import AppState
 from src.ops.logging import get_logger
 
@@ -49,9 +49,11 @@ def create_header():
             # 导航菜单
             with ui.row().classes("gap-2"):
                 ui.link("Dashboard", "/").classes("nav-link text-base")
+                ui.link("数据", "/data").classes("nav-link text-base")
                 ui.link("策略", "/strategies").classes("nav-link text-base")
                 ui.link("回测", "/backtests").classes("nav-link text-base")
                 ui.link("优化", "/optimization").classes("nav-link text-base")
+                ui.link("设置", "/settings").classes("nav-link text-base")
 
         # 暗色模式切换（三态：跟随系统、亮色、暗色）
         dark = ui.dark_mode()
@@ -218,6 +220,20 @@ def backtests_page():
 def optimization_page():
     """参数优化页"""
     optimization.render()
+
+
+@ui.page("/data")
+@create_layout
+def data_page():
+    """数据管理页"""
+    data.render()
+
+
+@ui.page("/settings")
+@create_layout
+def settings_page():
+    """系统设置页"""
+    settings.render()
 
 
 def main():

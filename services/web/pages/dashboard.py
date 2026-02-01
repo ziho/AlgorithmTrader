@@ -3,11 +3,15 @@ Dashboard 页面
 
 系统状态概览:
 - 服务健康状态
+- 快捷链接 (Grafana, InfluxDB)
 - 运行中的策略
 - 最近告警
 - 最近回测
+- 通知测试
 """
 
+import asyncio
+import os
 from pathlib import Path
 
 from nicegui import ui
@@ -28,6 +32,10 @@ def render():
     with ui.row().classes("w-full gap-4 flex-wrap") as status_row:
         _render_service_status(status_row)
 
+    # 快捷链接
+    with ui.row().classes("w-full gap-4 mt-4"):
+        _render_quick_links()
+
     # 统计卡片
     with ui.row().classes("w-full gap-4 flex-wrap mt-4"):
         _render_stats_cards()
@@ -41,6 +49,10 @@ def render():
         # 最近回测
         with ui.column().classes("flex-1 min-w-80"):
             _render_recent_backtests()
+
+    # 通知测试区域
+    with ui.row().classes("w-full mt-4"):
+        _render_notification_test()
 
 
 async def _fetch_service_statuses() -> list[ServiceStatus]:
@@ -60,11 +72,13 @@ def _render_service_status(container):
     statuses = monitor.get_mock_statuses()
 
     for status in statuses:
-        status_card.render(
-            title=status.name,
-            status=status.status,
-            message=status.message,
-        )
+        with container:
+            status_card.render(
+                title=status.name,
+                status=status.status,
+                message=status.message,
+                url=getattr(status, 'url', None),
+            )
 
     # 后台异步获取真实状态
     async def update_statuses():
@@ -77,12 +91,39 @@ def _render_service_status(container):
                         title=status.name,
                         status=status.status,
                         message=status.message,
+                        url=getattr(status, 'url', None),
                     )
         except Exception:
             pass  # 保持模拟数据
 
     # 启动异步更新
     ui.timer(0.5, update_statuses, once=True)
+
+
+def _render_quick_links():
+    """渲染快捷链接"""
+    with ui.card().classes("card w-full"):
+        with ui.row().classes("justify-between items-center"):
+            ui.label("快捷入口").classes("text-lg font-medium")
+
+            with ui.row().classes("gap-2"):
+                ui.button(
+                    "Grafana 监控面板",
+                    icon="dashboard",
+                    on_click=lambda: ui.open("http://localhost:3000"),
+                ).props("flat color=blue")
+
+                ui.button(
+                    "InfluxDB 数据库",
+                    icon="storage",
+                    on_click=lambda: ui.open("http://localhost:8086"),
+                ).props("flat color=purple")
+
+                ui.button(
+                    "数据管理",
+                    icon="folder_open",
+                    on_click=lambda: ui.navigate.to("/data"),
+                ).props("flat color=green")
 
 
 def _render_stats_cards():
@@ -289,3 +330,56 @@ def _render_backtest_item(backtest: dict):
             ui.spinner(size="sm")
         else:
             ui.label(backtest["status"]).classes("text-xs text-gray-400")
+
+
+def _render_notification_test():
+    """渲染通知测试区域"""
+    with ui.card().classes("card w-full"):
+        with ui.row().classes("justify-between items-center mb-4"):
+            ui.label("通知测试").classes("text-lg font-medium")
+
+        # 显示当前配置的 Webhook URL
+        webhook_url = os.getenv("WEBHOOK_URL", "")
+        bark_configured = webhook_url and "api.day.app" in webhook_url
+
+        with ui.row().classes("gap-4 items-center"):
+            if bark_configured:
+                ui.label("✅ Bark 已配置").classes("text-green-600 dark:text-green-400")
+                # 隐藏敏感部分
+                masked_url = webhook_url[:30] + "..."
+                ui.label(masked_url).classes("text-gray-500 text-sm font-mono")
+            elif webhook_url:
+                ui.label("✅ Webhook 已配置").classes("text-green-600 dark:text-green-400")
+            else:
+                ui.label("⚠️ 通知未配置").classes("text-yellow-600 dark:text-yellow-400")
+                ui.label("请在 .env 中设置 WEBHOOK_URL").classes("text-gray-500 text-sm")
+
+        # 测试按钮
+        result_label = ui.label("").classes("mt-2")
+
+        async def send_test_notification():
+            result_label.set_text("正在发送...")
+
+            try:
+                from src.ops.notify import send_notification
+
+                await send_notification(
+                    title="AlgorithmTrader 测试",
+                    message="这是一条测试通知，如果您收到此消息说明通知功能正常工作。",
+                    level="info",
+                )
+                result_label.set_text("✅ 测试通知已发送!")
+                result_label.classes(remove="text-red-600", add="text-green-600")
+                ui.notify("测试通知已发送", type="positive")
+
+            except Exception as e:
+                result_label.set_text(f"❌ 发送失败: {e}")
+                result_label.classes(remove="text-green-600", add="text-red-600")
+                ui.notify(f"发送失败: {e}", type="negative")
+
+        with ui.row().classes("gap-2 mt-4"):
+            ui.button(
+                "发送测试通知",
+                icon="notifications",
+                on_click=lambda: asyncio.create_task(send_test_notification()),
+            ).props("color=primary" if webhook_url else "disabled")

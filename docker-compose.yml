@@ -256,6 +256,69 @@ services:
       - trading  # 使用 --profile trading 启用
 
   # ============================================
+  # Data Fetcher - 历史数据下载服务
+  # ============================================
+  data-fetcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algorithmtrader-data-fetcher
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=data-fetcher
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./logs:/app/logs
+    # 默认命令：下载 6 个主流币种的 1m 数据
+    command: python -m scripts.fetch_history --tf 1m --from 2020-01-01
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - data  # 使用 --profile data 启用
+
+  # ============================================
+  # Realtime Sync - 实时数据同步服务
+  # ============================================
+  realtime-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algorithmtrader-realtime-sync
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=realtime-sync
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: python -m scripts.realtime_sync --symbols BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,DOGEUSDT --timeframes 1m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - data  # 使用 --profile data 启用
+
+  # ============================================
   # Notifier - 通知服务
   # ============================================
   notifier:

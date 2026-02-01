@@ -12,6 +12,7 @@ def render(
     status: str = "unknown",
     message: str = "",
     last_check: str = "",
+    url: str | None = None,
 ):
     """
     渲染状态卡片
@@ -21,6 +22,7 @@ def render(
         status: 状态 (healthy, warning, error, unknown)
         message: 状态消息
         last_check: 最后检查时间
+        url: 可点击跳转的 URL
     """
     status_config = {
         "healthy": {
@@ -41,6 +43,12 @@ def render(
             "bg": "bg-red-50 dark:bg-red-900/20",
             "label": "异常",
         },
+        "unhealthy": {
+            "icon": "error",
+            "color": "text-red-600 dark:text-red-400",
+            "bg": "bg-red-50 dark:bg-red-900/20",
+            "label": "异常",
+        },
         "unknown": {
             "icon": "help",
             "color": "text-gray-600 dark:text-gray-400",
@@ -51,10 +59,19 @@ def render(
 
     config = status_config.get(status, status_config["unknown"])
 
-    with ui.card().classes(f"card min-w-40 {config['bg']}"):
+    card_classes = f"card min-w-40 {config['bg']}"
+    if url:
+        card_classes += " cursor-pointer hover:opacity-80 transition-opacity"
+
+    with ui.card().classes(card_classes) as card:
+        if url:
+            card.on("click", lambda: ui.open(url))
+
         with ui.row().classes("items-center gap-2"):
             ui.icon(config["icon"]).classes(f"text-xl {config['color']}")
             ui.label(title).classes("font-medium")
+            if url:
+                ui.icon("open_in_new").classes("text-sm text-gray-400")
 
         with ui.row().classes("items-center gap-2 mt-2"):
             ui.label(config["label"]).classes(f"text-sm {config['color']}")

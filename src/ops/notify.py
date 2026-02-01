@@ -684,6 +684,48 @@ def get_notifier() -> Notifier:
     return _notifier
 
 
+async def send_notification(
+    title: str,
+    message: str,
+    level: str = "info",
+) -> bool:
+    """
+    发送通知的便捷函数
+
+    Args:
+        title: 通知标题
+        message: 通知内容
+        level: 级别 (info, warning, error, critical)
+
+    Returns:
+        bool: 是否发送成功
+    """
+    import os
+
+    # 直接使用 WebhookNotifier 发送
+    webhook_url = os.getenv("WEBHOOK_URL", "")
+    if not webhook_url:
+        logger.warning("send_notification_no_webhook", title=title)
+        return False
+
+    level_map = {
+        "info": NotifyLevel.INFO,
+        "warning": NotifyLevel.WARNING,
+        "error": NotifyLevel.ERROR,
+        "critical": NotifyLevel.CRITICAL,
+    }
+
+    notify_message = NotifyMessage(
+        notify_type=NotifyType.SYSTEM,
+        level=level_map.get(level, NotifyLevel.INFO),
+        title=title,
+        content=message,
+    )
+
+    notifier = WebhookNotifier(webhook_url=webhook_url)
+    return await notifier.send_async(notify_message)
+
+
 # 导出
 __all__ = [
     "NotifyLevel",
@@ -693,4 +735,5 @@ __all__ = [
     "WebhookNotifier",
     "Notifier",
     "get_notifier",
+    "send_notification",
 ]

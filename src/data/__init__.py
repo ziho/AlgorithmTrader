@@ -6,4 +6,14 @@ Data 模块 - 数据管理
 - pipelines: ETL 逻辑 (raw -> curated -> features)
 - store: 存储层 (Parquet/InfluxDB)
 - quality: 数据质量检测
+- fetcher: 历史数据下载与实时同步
 """
+
+from .fetcher import DataManager, HistoryFetcher, RealtimeSyncer, get_history
+
+__all__ = [
+    "DataManager",
+    "HistoryFetcher",
+    "RealtimeSyncer",
+    "get_history",
+]

@@ -19,6 +19,34 @@ class Environment(str, Enum):
     PROD = "prod"
 
 
+class BinanceSettings(BaseSettings):
+    """Binance 交易所配置"""
+
+    model_config = SettingsConfigDict(env_prefix="BINANCE_")
+
+    api_key: SecretStr = Field(default=SecretStr(""), description="Binance API Key")
+    api_secret: SecretStr = Field(default=SecretStr(""), description="Binance API Secret")
+    testnet: bool = Field(default=False, description="是否使用测试网")
+    
+    # 数据下载配置
+    download_symbols: str = Field(
+        default="BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,DOGEUSDT",
+        description="默认下载的交易对列表，逗号分隔"
+    )
+    download_timeframes: str = Field(
+        default="1m",
+        description="默认下载的时间框架列表，逗号分隔"
+    )
+    request_delay: float = Field(
+        default=0.2,
+        description="API 请求间隔秒数"
+    )
+    max_retries: int = Field(
+        default=5,
+        description="下载失败最大重试次数"
+    )
+
+
 class OKXSettings(BaseSettings):
     """OKX 交易所配置"""
 
@@ -104,6 +132,7 @@ class Settings(BaseSettings):
     bar_close_delay: int = Field(default=10, description="Bar close 触发延迟(秒)")
 
     # 子配置
+    binance: BinanceSettings = Field(default_factory=BinanceSettings)
     okx: OKXSettings = Field(default_factory=OKXSettings)
     ibkr: IBKRSettings = Field(default_factory=IBKRSettings)
     influxdb: InfluxDBSettings = Field(default_factory=InfluxDBSettings)

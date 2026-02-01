@@ -187,32 +187,49 @@ class WalkForwardValidator:
         self.config = config or WalkForwardConfig()
         self.config.validate()
 
+    def _ensure_data_dict(
+        self, data: pd.DataFrame | dict[str, pd.DataFrame]
+    ) -> dict[str, pd.DataFrame]:
+        """将输入统一为 {symbol: DataFrame} 形式"""
+
+        if isinstance(data, dict):
+            return data
+        # 单一 DataFrame 回退为默认符号
+        return {"symbol": data}
+
+    def _extract_dates(self, df: pd.DataFrame) -> pd.Series:
+        """从 DataFrame 提取 datetime 序列"""
+
+        if isinstance(df.index, pd.DatetimeIndex):
+            return df.index.to_series()
+        if "datetime" in df.columns:
+            return pd.to_datetime(df["datetime"])
+        if "timestamp" in df.columns:
+            return pd.to_datetime(df["timestamp"])
+        raise ValueError("数据必须有 datetime 索引或列")
+
     def generate_splits(
         self,
-        data: pd.DataFrame,
+        data: pd.DataFrame | dict[str, pd.DataFrame],
         start_date: datetime | None = None,
         end_date: datetime | None = None,
-    ) -> list[tuple[pd.DataFrame, pd.DataFrame]]:
+    ) -> list[tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]]:
         """
         生成训练/测试数据分割
 
         Args:
-            data: 完整数据集（需要有 datetime 索引或列）
+            data: 完整数据集（支持单 DataFrame 或 {symbol: DataFrame}）
             start_date: 开始日期
             end_date: 结束日期
 
         Returns:
-            [(train_data, test_data), ...]
+            [(train_data_dict, test_data_dict), ...]
         """
-        # 获取时间范围
-        if isinstance(data.index, pd.DatetimeIndex):
-            dates = data.index
-        elif "datetime" in data.columns:
-            dates = pd.to_datetime(data["datetime"])
-        elif "timestamp" in data.columns:
-            dates = pd.to_datetime(data["timestamp"])
-        else:
-            raise ValueError("数据必须有 datetime 索引或列")
+        data_dict = self._ensure_data_dict(data)
+
+        # 以首个品种的时间戳作为分割参考
+        ref_df = next(iter(data_dict.values()))
+        dates = self._extract_dates(ref_df)
 
         data_start = start_date or dates.min()
         data_end = end_date or dates.max()
@@ -222,7 +239,7 @@ class WalkForwardValidator:
         if isinstance(data_end, pd.Timestamp):
             data_end = data_end.to_pydatetime()
 
-        splits = []
+        splits: list[tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]] = []
 
         # 计算每个分割的起始点
         total_days = (data_end - data_start).days
@@ -239,30 +256,42 @@ class WalkForwardValidator:
             if test_end > data_end:
                 break
 
-            # 过滤数据
-            if isinstance(data.index, pd.DatetimeIndex):
-                train_mask = (data.index >= train_start) & (data.index < train_end)
-                test_mask = (data.index >= test_start) & (data.index < test_end)
-            else:
-                train_mask = (dates >= train_start) & (dates < train_end)
-                test_mask = (dates >= test_start) & (dates < test_end)
+            train_split: dict[str, pd.DataFrame] = {}
+            test_split: dict[str, pd.DataFrame] = {}
 
-            train_data = data[train_mask].copy()
-            test_data = data[test_mask].copy()
+            for symbol, df in data_dict.items():
+                df_dates = self._extract_dates(df)
 
-            if len(train_data) > 0 and len(test_data) > 0:
-                splits.append((train_data, test_data))
+                if isinstance(df.index, pd.DatetimeIndex):
+                    train_mask = (df.index >= train_start) & (df.index < train_end)
+                    test_mask = (df.index >= test_start) & (df.index < test_end)
+                else:
+                    train_mask = (df_dates >= train_start) & (df_dates < train_end)
+                    test_mask = (df_dates >= test_start) & (df_dates < test_end)
+
+                train_df = df[train_mask].copy()
+                test_df = df[test_mask].copy()
+
+                if len(train_df) == 0 or len(test_df) == 0:
+                    continue
+
+                train_split[symbol] = train_df
+                test_split[symbol] = test_df
+
+            if train_split and test_split:
+                splits.append((train_split, test_split))
 
         return splits
 
     def run(
         self,
         strategy_class: type[Strategy],
-        data: pd.DataFrame,
+        data: pd.DataFrame | dict[str, pd.DataFrame],
         param_space: dict[str, dict],
         objective: "Objective",
         search_method: "SearchMethod",
         backtest_config: BacktestConfig | None = None,
+        timeframe: str = "15m",
     ) -> WalkForwardResult:
         """
         执行 Walk-Forward 验证
@@ -285,20 +314,16 @@ class WalkForwardValidator:
         result = WalkForwardResult(config=self.config)
 
         for i, (train_data, test_data) in enumerate(splits_data):
+            # 取参考品种用于记录时间范围
+            ref_train_df = next(iter(train_data.values()))
+            ref_test_df = next(iter(test_data.values()))
+
             split = WalkForwardSplit(
                 split_id=i,
-                train_start=train_data.index.min()
-                if isinstance(train_data.index, pd.DatetimeIndex)
-                else train_data["datetime"].min(),
-                train_end=train_data.index.max()
-                if isinstance(train_data.index, pd.DatetimeIndex)
-                else train_data["datetime"].max(),
-                test_start=test_data.index.min()
-                if isinstance(test_data.index, pd.DatetimeIndex)
-                else test_data["datetime"].min(),
-                test_end=test_data.index.max()
-                if isinstance(test_data.index, pd.DatetimeIndex)
-                else test_data["datetime"].max(),
+                train_start=self._extract_dates(ref_train_df).min(),
+                train_end=self._extract_dates(ref_train_df).max(),
+                test_start=self._extract_dates(ref_test_df).min(),
+                test_end=self._extract_dates(ref_test_df).max(),
             )
 
             # 在训练集上优化
@@ -317,10 +342,20 @@ class WalkForwardValidator:
                 split.train_metrics = opt_result.best_metrics
 
                 # 在测试集上验证
-                strategy = strategy_class(**split.best_params)
+                from src.strategy.base import StrategyConfig
+
+                strategy_config = StrategyConfig(
+                    name=f"wf_{split.split_id}",
+                    params=split.best_params,
+                )
+                strategy = strategy_class(config=strategy_config)
                 bt_config = backtest_config or BacktestConfig()
-                bt_engine = BacktestEngine(bt_config, strategy)
-                bt_result = bt_engine.run(test_data)
+                bt_engine = BacktestEngine(config=bt_config)
+                bt_result = bt_engine.run_with_data(
+                    strategy=strategy,
+                    data=test_data,
+                    timeframe=timeframe,
+                )
 
                 split.test_metrics = MetricsCalculator.calculate(bt_result)
 
