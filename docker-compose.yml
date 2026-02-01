@@ -290,6 +290,44 @@ services:
     profiles:
       - trading  # 使用 --profile trading 启用
 
+  # ============================================
+  # Web - 管理界面服务
+  # ============================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algorithmtrader-web
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=web
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: python -m services.web.main --host 0.0.0.0 --port 8080
+    depends_on:
+      - influxdb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - algorithmtrader-net
+    profiles:
+      - web  # 使用 --profile web 启用
+
 # ============================================
 
 # Networks
