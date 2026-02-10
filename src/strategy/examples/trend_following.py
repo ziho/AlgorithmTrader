@@ -24,8 +24,10 @@ import numpy as np
 
 from src.core.typing import BarFrame, StrategyOutput
 from src.strategy.base import StrategyBase, StrategyConfig
+from src.strategy.registry import register_strategy
 
 
+@register_strategy("DualMAStrategy")
 class DualMAStrategy(StrategyBase):
     """
     双均线交叉策略
@@ -120,6 +122,7 @@ class DualMAStrategy(StrategyBase):
         return None
 
 
+@register_strategy("DonchianBreakoutStrategy")
 class DonchianBreakoutStrategy(StrategyBase):
     """
     唐奇安通道突破策略 (海龟交易法则)

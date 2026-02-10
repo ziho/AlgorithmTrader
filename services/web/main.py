@@ -13,8 +13,6 @@ Web 管理服务主入口
     python -m services.web.main
 """
 
-from contextlib import asynccontextmanager
-
 from nicegui import app, ui
 
 from services.web.pages import backtests, dashboard, data, optimization, settings, strategies
@@ -23,21 +21,30 @@ from src.ops.logging import get_logger
 
 logger = get_logger(__name__)
 
+# 应用状态实例
+_app_state: AppState | None = None
 
-@asynccontextmanager
-async def lifespan():
-    """应用生命周期管理"""
+
+async def _on_startup():
+    """应用启动时初始化"""
+    global _app_state
     logger.info("web_service_starting")
+    _app_state = AppState()
+    await _app_state.initialize()
+    app.storage.general["app_state"] = _app_state
+    logger.info("web_service_started")
 
-    # 初始化应用状态
-    app.state = AppState()
-    await app.state.initialize()
 
-    yield
-
-    # 清理资源
-    await app.state.cleanup()
+async def _on_shutdown():
+    """应用关闭时清理"""
+    global _app_state
+    if _app_state:
+        await _app_state.cleanup()
     logger.info("web_service_stopped")
+
+
+app.on_startup(_on_startup)
+app.on_shutdown(_on_shutdown)
 
 
 def create_header():
@@ -279,5 +286,5 @@ def main():
     )
 
 
-if __name__ == "__main__":
+if __name__ in {"__main__", "__mp_main__"}:
     main()

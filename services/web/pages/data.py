@@ -15,6 +15,9 @@ from pathlib import Path
 
 from nicegui import ui
 
+from services.web.download_tasks import format_eta, get_download_manager
+from services.web.utils import candidate_urls
+from src.core.config import get_settings
 from src.ops.logging import get_logger
 
 logger = get_logger(__name__)
@@ -57,20 +60,26 @@ def _render_data_stats():
     stats = _get_data_stats()
 
     cards = [
-        ("📊 Parquet 数据集", str(stats["parquet_datasets"]), "个交易对"),
-        ("💾 Parquet 大小", stats["parquet_size"], ""),
-        ("📈 InfluxDB 连接", stats["influx_status"], stats["influx_message"]),
-        ("🔄 最后同步", stats["last_sync"], ""),
+        ("📊 Parquet 数据集", str(stats["parquet_datasets"]), "个交易对", True),  # inline=True
+        ("💾 Parquet 大小", stats["parquet_size"], "", False),
+        ("📈 InfluxDB 连接", stats["influx_status"], stats["influx_message"], False),
+        ("🔄 最后同步", stats["last_sync"], "", False),
     ]
 
-    for title, value, subtitle in cards:
+    for title, value, subtitle, inline in cards:
         with ui.card().classes("card min-w-48 flex-1"):
             ui.label(title).classes("text-sm text-gray-500 dark:text-gray-400")
-            ui.label(value).classes("text-xl font-bold mt-1")
-            if subtitle:
-                ui.label(subtitle).classes(
-                    "text-xs text-gray-400 dark:text-gray-500 mt-1"
-                )
+            if inline and subtitle:
+                # 数字和单位在同一行
+                with ui.row().classes("items-baseline gap-1 mt-1"):
+                    ui.label(value).classes("text-xl font-bold")
+                    ui.label(subtitle).classes("text-sm text-gray-500 dark:text-gray-400")
+            else:
+                ui.label(value).classes("text-xl font-bold mt-1")
+                if subtitle:
+                    ui.label(subtitle).classes(
+                        "text-xs text-gray-400 dark:text-gray-500 mt-1"
+                    )
 
 
 def _get_data_stats() -> dict:
@@ -220,7 +229,9 @@ def _render_influx_data():
                 ui.button(
                     "打开 InfluxDB UI",
                     icon="open_in_new",
-                    on_click=lambda: ui.open("http://localhost:8086"),
+                    on_click=lambda: ui.run_javascript(
+                        "window.open('http://' + window.location.hostname + ':8086', '_blank')"
+                    ),
                 ).props("flat")
 
         # 连接状态
@@ -233,30 +244,44 @@ def _render_influx_data():
 
             try:
                 import httpx
+                settings = get_settings()
 
                 async with httpx.AsyncClient(timeout=5.0) as client:
-                    resp = await client.get("http://influxdb:8086/health")
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        status_container.clear()
-                        with status_container:
-                            ui.label("✅ InfluxDB 连接正常").classes(
-                                "text-green-600 dark:text-green-400 font-medium"
-                            )
-                            ui.label(f"状态: {data.get('status', 'ready')}").classes(
-                                "text-gray-500 mt-1"
-                            )
-                            ui.label(f"版本: {data.get('version', 'unknown')}").classes(
-                                "text-gray-500"
-                            )
+                    last_error: str | None = None
+                    for url in candidate_urls(settings.influxdb.url, service_host="influxdb"):
+                        try:
+                            resp = await client.get(f"{url.rstrip('/')}/health")
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                status_container.clear()
+                                with status_container:
+                                    ui.label("✅ InfluxDB 连接正常").classes(
+                                        "text-green-600 dark:text-green-400 font-medium"
+                                    )
+                                    ui.label(
+                                        f"状态: {data.get('status', 'ready')}"
+                                    ).classes("text-gray-500 mt-1")
+                                    ui.label(
+                                        f"版本: {data.get('version', 'unknown')}"
+                                    ).classes("text-gray-500")
 
-                            # 显示数据统计
-                            await _render_influx_stats(status_container)
-                    else:
-                        status_container.clear()
-                        with status_container:
-                            ui.label("⚠️ InfluxDB 响应异常").classes(
-                                "text-yellow-600 dark:text-yellow-400"
+                                    # 显示数据统计
+                                    await _render_influx_stats(status_container)
+                                return
+                            last_error = f"HTTP {resp.status_code}"
+                            break
+                        except httpx.ConnectError as e:
+                            last_error = str(e)
+                            continue
+
+                    status_container.clear()
+                    with status_container:
+                        ui.label("⚠️ InfluxDB 响应异常").classes(
+                            "text-yellow-600 dark:text-yellow-400"
+                        )
+                        if last_error:
+                            ui.label(f"错误: {last_error}").classes(
+                                "text-gray-500 text-sm mt-1"
                             )
             except Exception as e:
                 status_container.clear()
@@ -342,45 +367,87 @@ def _render_download_panel():
     """渲染数据下载面板"""
     with ui.card().classes("card w-full"):
         ui.label("历史数据下载").classes("text-lg font-medium mb-4")
+        manager = get_download_manager(PROJECT_ROOT / "data")
 
-        with ui.row().classes("gap-4 flex-wrap"):
+        # 常用交易对快捷选项
+        common_symbols = [
+            "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT",
+            "ADAUSDT", "AVAXUSDT", "DOTUSDT", "MATICUSDT"
+        ]
+
+        with ui.row().classes("gap-4 flex-wrap items-end"):
             # 交易所选择
             exchange = ui.select(
                 ["binance", "okx"],
                 value="binance",
                 label="交易所",
-            ).classes("min-w-32")
+            ).classes("min-w-32").props("outlined dense")
 
-            # 交易对输入
-            symbols = ui.input(
+            # 交易对 - 多选下拉 + 自定义输入
+            symbols_select = ui.select(
+                common_symbols,
+                value=["BTCUSDT", "ETHUSDT"],
                 label="交易对",
-                value="BTCUSDT,ETHUSDT",
-                placeholder="逗号分隔多个交易对",
-            ).classes("min-w-48")
+                multiple=True,
+                with_input=True,
+            ).classes("min-w-64").props("outlined dense use-chips")
 
             # 时间框架
             timeframe = ui.select(
                 ["1m", "5m", "15m", "1h", "4h", "1d"],
                 value="1m",
                 label="时间框架",
-            ).classes("min-w-24")
+            ).classes("min-w-24").props("outlined dense")
 
-        with ui.row().classes("gap-4 mt-4"):
+        ui.separator().classes("my-4")
+
+        # 日期范围 - 使用日期选择器
+        with ui.row().classes("gap-4 items-end flex-wrap"):
+            # 快捷日期选择
+            with ui.column().classes("gap-1"):
+                ui.label("快捷选择").classes("text-sm text-gray-500")
+                with ui.row().classes("gap-2 flex-wrap"):
+                    def set_date_range(months: int, start_ref, end_ref):
+                        end = datetime.now()
+                        start = end - timedelta(days=months * 30)
+                        start_ref.value = start.strftime("%Y-%m-%d")
+                        end_ref.value = end.strftime("%Y-%m-%d")
+
+                    def set_full_range(start_ref, end_ref):
+                        start_ref.value = "2020-01-01"
+                        end_ref.value = datetime.now().strftime("%Y-%m-%d")
+
+        # 日期输入框
+        with ui.row().classes("gap-4 items-end mt-2"):
             # 开始日期
-            start_date = ui.input(
-                label="开始日期",
-                value="2020-01-01",
-            ).classes("min-w-36")
+            with ui.input(label="开始日期", value="2020-01-01").classes("min-w-40").props("outlined dense") as start_input:
+                with ui.menu().props('no-parent-event') as start_menu:
+                    with ui.date(mask="YYYY-MM-DD").bind_value(start_input):
+                        with ui.row().classes('justify-end'):
+                            ui.button('确定', on_click=start_menu.close).props('flat')
+                with start_input.add_slot('append'):
+                    ui.icon('event').on('click', start_menu.open).classes('cursor-pointer')
 
             # 结束日期
-            end_date = ui.input(
-                label="结束日期",
-                value=datetime.now().strftime("%Y-%m-%d"),
-            ).classes("min-w-36")
+            with ui.input(label="结束日期", value=datetime.now().strftime("%Y-%m-%d")).classes("min-w-40").props("outlined dense") as end_input:
+                with ui.menu().props('no-parent-event') as end_menu:
+                    with ui.date(mask="YYYY-MM-DD").bind_value(end_input):
+                        with ui.row().classes('justify-end'):
+                            ui.button('确定', on_click=end_menu.close).props('flat')
+                with end_input.add_slot('append'):
+                    ui.icon('event').on('click', end_menu.open).classes('cursor-pointer')
+
+        # 快捷按钮 - 放在日期输入后面
+        with ui.row().classes("gap-2 mt-2 flex-wrap"):
+            ui.button("近 3 月", on_click=lambda: set_date_range(3, start_input, end_input)).props("flat dense size=sm")
+            ui.button("近 6 月", on_click=lambda: set_date_range(6, start_input, end_input)).props("flat dense size=sm")
+            ui.button("近 1 年", on_click=lambda: set_date_range(12, start_input, end_input)).props("flat dense size=sm")
+            ui.button("近 2 年", on_click=lambda: set_date_range(24, start_input, end_input)).props("flat dense size=sm")
+            ui.button("全部 (2020起)", on_click=lambda: set_full_range(start_input, end_input)).props("flat dense size=sm")
 
         # 下载按钮和进度
         with ui.row().classes("gap-4 mt-6 items-center"):
-            download_btn = ui.button("开始下载", icon="download").props("color=primary")
+            download_btn = ui.button("加入队列", icon="download").props("color=primary")
             progress_label = ui.label("").classes("text-gray-500")
 
         # 命令预览
@@ -388,18 +455,21 @@ def _render_download_panel():
             cmd_display = ui.code("").classes("w-full")
 
             def update_cmd():
+                # 处理多选的 symbols
+                selected = symbols_select.value if symbols_select.value else []
+                symbols_str = ",".join(selected) if isinstance(selected, list) else selected
                 cmd = (
                     f"python -m scripts.fetch_history "
                     f"--exchange {exchange.value} "
-                    f"--symbols {symbols.value} "
+                    f"--symbols {symbols_str} "
                     f"--tf {timeframe.value} "
-                    f"--from {start_date.value} "
-                    f"--to {end_date.value}"
+                    f"--from {start_input.value} "
+                    f"--to {end_input.value}"
                 )
                 cmd_display.set_content(cmd)
 
-            for widget in [exchange, symbols, timeframe, start_date, end_date]:
-                widget.on("update:model-value", lambda: update_cmd())
+            for widget in [exchange, symbols_select, timeframe, start_input, end_input]:
+                widget.on("update:model-value", lambda _: update_cmd())
 
             update_cmd()
 
@@ -407,54 +477,151 @@ def _render_download_panel():
         log_area = ui.log(max_lines=20).classes("w-full h-48 mt-4")
 
         async def start_download():
-            download_btn.disable()
-            progress_label.set_text("正在下载...")
-            log_area.push("开始下载...")
+            # 处理多选的 symbols
+            selected = symbols_select.value if symbols_select.value else []
+            symbol_list = selected if isinstance(selected, list) else [selected]
+            start = datetime.strptime(start_input.value, "%Y-%m-%d").replace(
+                tzinfo=UTC
+            )
+            end = datetime.strptime(end_input.value, "%Y-%m-%d").replace(tzinfo=UTC)
 
-            try:
-                from src.data.fetcher.history import HistoryFetcher
+            task = await manager.enqueue(
+                exchange=exchange.value,
+                symbols=symbol_list,
+                timeframe=timeframe.value,
+                start_date=start,
+                end_date=end,
+            )
 
-                fetcher = HistoryFetcher(
-                    data_dir=PROJECT_ROOT / "data",
-                    exchange=exchange.value,
-                )
+            progress_label.set_text("已加入队列")
+            log_area.push(
+                f"任务已加入队列: {task.id} ({exchange.value} {','.join(symbol_list)})"
+            )
+            ui.notify(f"任务 {task.id} 已加入队列", type="positive")
 
-                symbol_list = [s.strip() for s in symbols.value.split(",")]
-                start = datetime.strptime(start_date.value, "%Y-%m-%d").replace(tzinfo=UTC)
-                end = datetime.strptime(end_date.value, "%Y-%m-%d").replace(tzinfo=UTC)
+        download_btn.on_click(start_download)
 
-                async with fetcher:
-                    for symbol in symbol_list:
-                        log_area.push(f"下载 {symbol}...")
-                        stats = await fetcher.download_and_save(
-                            symbol=symbol,
-                            timeframe=timeframe.value,
-                            start_date=start,
-                            end_date=end,
+        # 下载任务队列
+        with ui.column().classes("w-full mt-4") as tasks_container:
+            ui.label("下载任务").classes("text-base font-medium")
+
+        def render_tasks():
+            tasks_container.clear()
+            with tasks_container:
+                ui.label("下载任务").classes("text-base font-medium")
+                tasks = manager.list_tasks()
+                if not tasks:
+                    ui.label("暂无任务").classes("text-gray-400")
+                    return
+
+                for task in tasks[:5]:
+                    with ui.card().classes("w-full"):
+                        title = (
+                            f"{task.exchange} · {','.join(task.symbols)} · {task.timeframe}"
                         )
-                        log_area.push(
-                            f"  完成: {stats.completed_months} 月, "
-                            f"{stats.total_rows:,} 行"
-                        )
+                        ui.label(title).classes("font-medium")
+                        ui.label(
+                            f"状态: {task.status} | 进度: {task.progress:.1f}%"
+                        ).classes("text-xs text-gray-500")
+                        if task.current_symbol:
+                            ui.label(f"当前: {task.current_symbol}").classes(
+                                "text-xs text-gray-500"
+                            )
+                        ui.linear_progress(value=task.progress / 100).props("size=8px")
+                        ui.label(
+                            f"{task.completed_units}/{task.total_units} 月 | ETA {format_eta(task.eta_seconds)}"
+                        ).classes("text-xs text-gray-400")
 
-                progress_label.set_text("下载完成!")
-                ui.notify("下载完成", type="positive")
-
-            except Exception as e:
-                log_area.push(f"错误: {e}")
-                progress_label.set_text("下载失败")
-                ui.notify(f"下载失败: {e}", type="negative")
-
-            finally:
-                download_btn.enable()
-
-        download_btn.on_click(lambda: asyncio.create_task(start_download()))
+        ui.timer(1.0, render_tasks)
 
 
 def _render_sync_panel():
     """渲染实时同步面板"""
+    # 当前数据状态卡片
+    with ui.card().classes("card w-full mb-4"):
+        ui.label("📊 当前数据状态").classes("text-lg font-medium mb-4")
+
+        status_container = ui.column().classes("w-full")
+
+        async def load_data_status():
+            """加载所有交易对的数据状态"""
+            status_container.clear()
+            with status_container:
+                ui.spinner("dots").classes("mx-auto")
+
+            try:
+                from src.data.fetcher.manager import DataManager
+
+                manager = DataManager(data_dir=PROJECT_ROOT / "data")
+                data_list = manager.list_available_data()
+
+                status_container.clear()
+                with status_container:
+                    if not data_list:
+                        ui.label("暂无数据，请先下载历史数据").classes("text-gray-400")
+                        return
+
+                    # 表格显示
+                    rows = []
+                    for item in data_list:
+                        symbol = item["symbol"].replace("/", "")
+                        tf = item["timeframe"]
+                        range_info = item.get("range", (None, None))
+
+                        # 检查缺口
+                        gaps = manager.detect_gaps(item["exchange"], symbol, tf)
+                        gap_count = len(gaps) if gaps else 0
+
+                        # 计算数据覆盖
+                        if range_info[0] and range_info[1]:
+                            start_str = range_info[0].strftime("%Y-%m-%d")
+                            end_str = range_info[1].strftime("%Y-%m-%d")
+                            # 计算距今天数
+                            days_behind = (datetime.now(UTC) - range_info[1]).days
+                            freshness = "✅ 最新" if days_behind <= 1 else f"⚠️ 落后 {days_behind} 天"
+                        else:
+                            start_str = "-"
+                            end_str = "-"
+                            freshness = "❓ 未知"
+
+                        rows.append({
+                            "id": f"{item['exchange']}_{symbol}_{tf}",
+                            "exchange": item["exchange"].upper(),
+                            "symbol": symbol,
+                            "timeframe": tf,
+                            "start": start_str,
+                            "end": end_str,
+                            "freshness": freshness,
+                            "gaps": f"⚠️ {gap_count}" if gap_count > 0 else "✅ 0",
+                        })
+
+                    columns = [
+                        {"name": "exchange", "label": "交易所", "field": "exchange", "align": "left"},
+                        {"name": "symbol", "label": "交易对", "field": "symbol", "align": "left"},
+                        {"name": "timeframe", "label": "周期", "field": "timeframe", "align": "center"},
+                        {"name": "start", "label": "开始", "field": "start", "align": "center"},
+                        {"name": "end", "label": "结束", "field": "end", "align": "center"},
+                        {"name": "freshness", "label": "新鲜度", "field": "freshness", "align": "center"},
+                        {"name": "gaps", "label": "缺口", "field": "gaps", "align": "center"},
+                    ]
+
+                    ui.table(columns=columns, rows=rows, row_key="id").classes("w-full")
+
+            except Exception as e:
+                status_container.clear()
+                with status_container:
+                    ui.label(f"❌ 加载失败: {e}").classes("text-red-600")
+
+        # 自动加载
+        ui.timer(0.1, load_data_status, once=True)
+
+        # 刷新按钮
+        with ui.row().classes("mt-4"):
+            ui.button("刷新状态", icon="refresh", on_click=load_data_status).props("flat")
+
+    # 实时同步配置
     with ui.card().classes("card w-full"):
-        ui.label("实时数据同步").classes("text-lg font-medium mb-4")
+        ui.label("🔄 实时同步服务").classes("text-lg font-medium mb-4")
 
         ui.label(
             "实时同步服务会持续从交易所获取最新 K 线数据，并自动补齐缺口。"
@@ -542,7 +709,7 @@ def _check_gaps_dialog():
                     ui.label(f"❌ 错误: {e}").classes("text-red-600")
 
         with ui.row().classes("justify-end gap-2 mt-4"):
-            ui.button("检查", on_click=lambda: asyncio.create_task(check())).props(
+            ui.button("检查", on_click=check).props(
                 "color=primary"
             )
             ui.button("关闭", on_click=dialog.close).props("flat")
@@ -594,7 +761,7 @@ def _manual_sync_dialog():
                     ui.label(f"❌ 错误: {e}").classes("text-red-600")
 
         with ui.row().classes("justify-end gap-2 mt-4"):
-            ui.button("同步", on_click=lambda: asyncio.create_task(sync())).props(
+            ui.button("同步", on_click=sync).props(
                 "color=primary"
             )
             ui.button("关闭", on_click=dialog.close).props("flat")

@@ -348,7 +348,7 @@ class WebhookNotifier:
                         else "active",
                     }
                     async with session.post(base_url, json=payload) as resp:
-                        success = resp.status == 200
+                        success = resp.status in (200, 201, 204)
                 else:
                     # 通用 Webhook
                     payload = self._build_payload(message)

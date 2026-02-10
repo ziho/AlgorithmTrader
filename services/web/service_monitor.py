@@ -10,6 +10,7 @@
 """
 
 import asyncio
+import os
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -18,6 +19,8 @@ from pathlib import Path
 
 import httpx
 
+from services.web.utils import candidate_urls
+from src.core.config import get_settings
 
 @dataclass
 class ServiceStatus:
@@ -46,6 +49,10 @@ class ServiceMonitor:
 
     # 容器名称与服务名称映射
     CONTAINER_SERVICES = {
+        "algorithmtrader-collector": "Collector",
+        "algorithmtrader-trader": "Trader",
+        "algorithmtrader-scheduler": "Scheduler",
+        "algorithmtrader-notifier": "Notifier",
         "algorithmtrader-collector-1": "Collector",
         "algorithmtrader-trader-1": "Trader",
         "algorithmtrader-scheduler-1": "Scheduler",
@@ -65,6 +72,9 @@ class ServiceMonitor:
         self._statuses: dict[str, ServiceStatus] = {}
         self._callbacks: list[Callable] = []
         self._data_dir = Path("/app/data")
+        settings = get_settings()
+        self._influx_url = settings.influxdb.url
+        self._grafana_url = os.getenv("GRAFANA_URL", "http://grafana:3000")
 
     def get_all_statuses(self) -> list[ServiceStatus]:
         """获取所有服务状态"""
@@ -104,73 +114,82 @@ class ServiceMonitor:
 
     async def _check_influxdb(self) -> ServiceStatus:
         """检查 InfluxDB 连接"""
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get("http://influxdb:8086/health")
+        last_error: str | None = None
+        for url in candidate_urls(self._influx_url, service_host="influxdb"):
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(f"{url.rstrip('/')}/health")
 
-                if response.status_code == 200:
-                    data = response.json()
-                    return ServiceStatus(
-                        name="InfluxDB",
-                        status="healthy",
-                        message=f"v{data.get('version', 'unknown')}",
-                        url="http://localhost:8086",
-                        details=data,
-                    )
-                else:
+                    if response.status_code == 200:
+                        data = response.json()
+                        version = data.get('version', 'unknown')
+                        # 版本号可能已经包含 'v' 前缀
+                        version_str = version if version.startswith('v') else f"v{version}"
+                        return ServiceStatus(
+                            name="InfluxDB",
+                            status="healthy",
+                            message=version_str,
+                            url="http://localhost:8086",
+                            details=data,
+                        )
                     return ServiceStatus(
                         name="InfluxDB",
                         status="unhealthy",
                         message=f"HTTP {response.status_code}",
                         url="http://localhost:8086",
                     )
-        except httpx.ConnectError:
-            return ServiceStatus(
-                name="InfluxDB",
-                status="unknown",
-                message="无法连接",
-            )
-        except Exception as e:
-            return ServiceStatus(
-                name="InfluxDB",
-                status="unhealthy",
-                message=str(e)[:50],
-            )
+            except httpx.ConnectError as e:
+                last_error = str(e)
+                continue
+            except Exception as e:
+                return ServiceStatus(
+                    name="InfluxDB",
+                    status="unhealthy",
+                    message=str(e)[:50],
+                )
+        return ServiceStatus(
+            name="InfluxDB",
+            status="unknown",
+            message="无法连接" if last_error is None else last_error[:50],
+        )
 
     async def _check_grafana(self) -> ServiceStatus:
         """检查 Grafana 连接"""
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get("http://grafana:3000/api/health")
+        last_error: str | None = None
+        for url in candidate_urls(self._grafana_url, service_host="grafana"):
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(f"{url.rstrip('/')}/api/health")
 
-                if response.status_code == 200:
-                    data = response.json()
-                    return ServiceStatus(
-                        name="Grafana",
-                        status="healthy",
-                        message=f"v{data.get('version', 'unknown')}",
-                        url="http://localhost:3000",
-                        details=data,
-                    )
-                else:
+                    if response.status_code == 200:
+                        data = response.json()
+                        return ServiceStatus(
+                            name="Grafana",
+                            status="healthy",
+                            message=f"v{data.get('version', 'unknown')}",
+                            url="http://localhost:3000",
+                            details=data,
+                        )
                     return ServiceStatus(
                         name="Grafana",
                         status="unhealthy",
                         message=f"HTTP {response.status_code}",
                         url="http://localhost:3000",
                     )
-        except httpx.ConnectError:
-            return ServiceStatus(
-                name="Grafana",
-                status="unknown",
-                message="无法连接",
-            )
-        except Exception as e:
-            return ServiceStatus(
-                name="Grafana",
-                status="unhealthy",
-                message=str(e)[:50],
-            )
+            except httpx.ConnectError as e:
+                last_error = str(e)
+                continue
+            except Exception as e:
+                return ServiceStatus(
+                    name="Grafana",
+                    status="unhealthy",
+                    message=str(e)[:50],
+                )
+        return ServiceStatus(
+            name="Grafana",
+            status="unknown",
+            message="无法连接" if last_error is None else last_error[:50],
+        )
 
     async def _check_docker_containers(self) -> list[ServiceStatus]:
         """通过 Docker 检查容器状态"""

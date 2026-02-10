@@ -65,7 +65,16 @@ def render(
 
     with ui.card().classes(card_classes) as card:
         if url:
-            card.on("click", lambda: ui.open(url))
+            # 从 URL 中提取端口号，使用当前浏览器的 hostname
+            import re
+            port_match = re.search(r':(\d+)', url)
+            port = port_match.group(1) if port_match else "80"
+            card.on(
+                "click",
+                lambda p=port: ui.run_javascript(
+                    f"window.open('http://' + window.location.hostname + ':{p}', '_blank')"
+                )
+            )
 
         with ui.row().classes("items-center gap-2"):
             ui.icon(config["icon"]).classes(f"text-xl {config['color']}")

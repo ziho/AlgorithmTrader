@@ -3,56 +3,57 @@ Dashboard 页面
 
 系统状态概览:
 - 服务健康状态
-- 快捷链接 (Grafana, InfluxDB)
-- 运行中的策略
-- 最近告警
-- 最近回测
-- 通知测试
+- 数据采集状态（历史数据覆盖、缺口、最新更新）
+- 回测进程状态
+- 实盘策略运行状态
+- 快捷链接
 """
 
-import asyncio
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 from nicegui import ui
 
 from services.web.components import status_card
+from services.web.download_tasks import format_eta, get_download_manager
 from services.web.service_monitor import ServiceStatus, get_monitor
 from services.web.strategy_config import StrategyConfigManager
 
 # 配置路径
 CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "strategies.json"
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
 
 def render():
     """渲染 Dashboard 页面"""
     ui.label("Dashboard").classes("text-2xl font-bold mb-4")
 
-    # 服务状态区域
     with ui.row().classes("w-full gap-4 flex-wrap") as status_row:
         _render_service_status(status_row)
 
-    # 快捷链接
-    with ui.row().classes("w-full gap-4 mt-4"):
+    with ui.row().classes("w-full mt-4"):
         _render_quick_links()
-
-    # 统计卡片
-    with ui.row().classes("w-full gap-4 flex-wrap mt-4"):
-        _render_stats_cards()
-
-    # 下方两栏布局
+    
     with ui.row().classes("w-full gap-4 mt-4"):
-        # 最近告警
-        with ui.column().classes("flex-1 min-w-80"):
-            _render_recent_alerts()
+        _render_data_status_overview()
 
-        # 最近回测
+    with ui.row().classes("w-full gap-4 mt-4"):
+        _render_download_task_overview()
+
+    
+    with ui.row().classes("w-full gap-4 mt-4"):
+        with ui.column().classes("flex-1 min-w-80"):
+            _render_live_trading_status()
+        with ui.column().classes("flex-1 min-w-80"):
+            _render_backtest_status()
+
+    
+    with ui.row().classes("w-full gap-4 mt-4"):
+        with ui.column().classes("flex-1 min-w-80"):
+             _render_recent_alerts()
         with ui.column().classes("flex-1 min-w-80"):
             _render_recent_backtests()
-
-    # 通知测试区域
-    with ui.row().classes("w-full mt-4"):
-        _render_notification_test()
 
 
 async def _fetch_service_statuses() -> list[ServiceStatus]:
@@ -107,16 +108,21 @@ def _render_quick_links():
             ui.label("快捷入口").classes("text-lg font-medium")
 
             with ui.row().classes("gap-2"):
+                # 使用当前浏览器的 host，自动适配内网/VPN/公网访问
                 ui.button(
                     "Grafana 监控面板",
                     icon="dashboard",
-                    on_click=lambda: ui.open("http://localhost:3000"),
+                    on_click=lambda: ui.run_javascript(
+                        "window.open('http://' + window.location.hostname + ':3000', '_blank')"
+                    ),
                 ).props("flat color=blue")
 
                 ui.button(
                     "InfluxDB 数据库",
                     icon="storage",
-                    on_click=lambda: ui.open("http://localhost:8086"),
+                    on_click=lambda: ui.run_javascript(
+                        "window.open('http://' + window.location.hostname + ':8086', '_blank')"
+                    ),
                 ).props("flat color=purple")
 
                 ui.button(
@@ -126,42 +132,223 @@ def _render_quick_links():
                 ).props("flat color=green")
 
 
-def _render_stats_cards():
-    """渲染统计卡片"""
-    # 从策略配置获取真实数据
-    try:
-        manager = StrategyConfigManager(config_path=CONFIG_PATH)
-        manager.load()
-        strategies = manager.get_all()
-        running_count = len([s for s in strategies if s.enabled])
-    except Exception:
-        running_count = 0
+def _render_data_status_overview():
+    """渲染数据状态概览"""
+    with ui.card().classes("card w-full"):
+        with ui.row().classes("justify-between items-center mb-4"):
+            ui.label("📊 数据采集状态").classes("text-lg font-medium")
+            ui.button("查看详情", icon="arrow_forward", on_click=lambda: ui.navigate.to("/data")).props("flat size=sm")
 
-    stats = [
-        ("运行策略", str(running_count), "个策略正在运行"),
-        ("今日交易", "0", "笔订单已执行"),
-        ("今日 PnL", "$0.00", "收益率 0.00%"),
-        ("数据延迟", "< 1s", "最后更新 刚刚"),
-    ]
+        status_container = ui.column().classes("w-full")
 
-    for title, value, subtitle in stats:
-        with ui.card().classes("card min-w-48 flex-1"):
-            ui.label(title).classes("text-sm text-gray-500 dark:text-gray-400")
-            ui.label(value).classes("text-2xl font-bold mt-1")
-            ui.label(subtitle).classes("text-xs text-gray-400 dark:text-gray-500 mt-1")
+        async def load_data_status():
+            status_container.clear()
+            with status_container:
+                ui.spinner("dots").classes("mx-auto")
+
+            try:
+                from src.data.fetcher.manager import DataManager
+
+                manager = DataManager(data_dir=PROJECT_ROOT / "data")
+                data_list = manager.list_available_data()
+
+                status_container.clear()
+                with status_container:
+                    if not data_list:
+                        with ui.row().classes("items-center gap-2"):
+                            ui.icon("warning").classes("text-yellow-500")
+                            ui.label("暂无数据").classes("text-yellow-600")
+                        ui.link("→ 前往下载历史数据", "/data").classes("text-sm text-blue-500")
+                        return
+
+                    # 统计概览
+                    total_symbols = len(data_list)
+                    total_gaps = 0
+                    outdated_count = 0
+                    latest_update = None
+
+                    for item in data_list:
+                        symbol = item["symbol"].replace("/", "")
+                        tf = item["timeframe"]
+                        gaps = manager.detect_gaps(item["exchange"], symbol, tf)
+                        if gaps:
+                            total_gaps += len(gaps)
+
+                        range_info = item.get("range", (None, None))
+                        if range_info[1]:
+                            days_behind = (datetime.now(UTC) - range_info[1]).days
+                            if days_behind > 1:
+                                outdated_count += 1
+                            if latest_update is None or range_info[1] > latest_update:
+                                latest_update = range_info[1]
+
+                    # 显示概览卡片
+                    with ui.row().classes("w-full gap-4 flex-wrap"):
+                        # 数据集数量
+                        with ui.column().classes("flex-1 min-w-32"):
+                            with ui.row().classes("items-baseline gap-1"):
+                                ui.label(str(total_symbols)).classes("text-2xl font-bold text-blue-600")
+                                ui.label("个交易对").classes("text-sm text-gray-500")
+
+                        # 缺口状态
+                        with ui.column().classes("flex-1 min-w-32"):
+                            if total_gaps == 0:
+                                with ui.row().classes("items-center gap-1"):
+                                    ui.icon("check_circle").classes("text-green-500")
+                                    ui.label("无缺口").classes("text-green-600 font-medium")
+                            else:
+                                with ui.row().classes("items-center gap-1"):
+                                    ui.icon("warning").classes("text-yellow-500")
+                                    ui.label(f"{total_gaps} 个缺口").classes("text-yellow-600 font-medium")
+
+                        # 数据新鲜度
+                        with ui.column().classes("flex-1 min-w-32"):
+                            if outdated_count == 0:
+                                with ui.row().classes("items-center gap-1"):
+                                    ui.icon("check_circle").classes("text-green-500")
+                                    ui.label("数据最新").classes("text-green-600 font-medium")
+                            else:
+                                with ui.row().classes("items-center gap-1"):
+                                    ui.icon("update").classes("text-yellow-500")
+                                    ui.label(f"{outdated_count} 个落后").classes("text-yellow-600 font-medium")
+
+                        # 最后更新
+                        with ui.column().classes("flex-1 min-w-40"):
+                            ui.label("最后更新").classes("text-xs text-gray-400")
+                            if latest_update:
+                                time_ago = datetime.now(UTC) - latest_update
+                                if time_ago.days > 0:
+                                    time_str = f"{time_ago.days} 天前"
+                                elif time_ago.seconds > 3600:
+                                    time_str = f"{time_ago.seconds // 3600} 小时前"
+                                else:
+                                    time_str = f"{time_ago.seconds // 60} 分钟前"
+                                ui.label(time_str).classes("font-medium")
+                            else:
+                                ui.label("-").classes("font-medium")
+
+            except Exception as e:
+                status_container.clear()
+                with status_container:
+                    ui.label(f"加载失败: {e}").classes("text-red-500 text-sm")
+
+        ui.timer(0.1, load_data_status, once=True)
+
+
+def _render_download_task_overview():
+    """渲染下载任务概览"""
+    with ui.card().classes("card w-full"):
+        with ui.row().classes("justify-between items-center mb-2"):
+            ui.label("⬇️ 下载任务").classes("text-lg font-medium")
+            ui.link("查看详情 →", "/data").classes("text-sm text-blue-500")
+
+        manager = get_download_manager(PROJECT_ROOT / "data")
+        tasks_container = ui.column().classes("w-full")
+
+        def render_tasks():
+            tasks_container.clear()
+            with tasks_container:
+                tasks = manager.get_active_tasks()
+                if not tasks:
+                    ui.label("暂无进行中的任务").classes("text-gray-400")
+                    return
+
+                for task in tasks[:3]:
+                    with ui.row().classes("w-full items-center gap-4 py-2"):
+                        with ui.column().classes("flex-1"):
+                            ui.label(
+                                f"{task.exchange} · {','.join(task.symbols)} · {task.timeframe}"
+                            ).classes("text-sm font-medium")
+                            ui.label(
+                                f"{task.status} | ETA {format_eta(task.eta_seconds)}"
+                            ).classes("text-xs text-gray-400")
+                        with ui.column().classes("min-w-40"):
+                            ui.linear_progress(value=task.progress / 100).props(
+                                "size=8px"
+                            )
+                            ui.label(f"{task.progress:.1f}%").classes(
+                                "text-xs text-center text-gray-500"
+                            )
+
+        ui.timer(1.0, render_tasks)
+
+
+def _render_live_trading_status():
+    """渲染实盘交易状态"""
+    with ui.card().classes("card w-full h-full"):
+        ui.label("🤖 实盘交易").classes("text-lg font-medium mb-4")
+
+        # 从策略配置获取数据
+        try:
+            manager = StrategyConfigManager(config_path=CONFIG_PATH)
+            manager.load()
+            strategies = manager.get_all()
+            enabled_strategies = [s for s in strategies if s.enabled]
+        except Exception:
+            enabled_strategies = []
+
+        if not enabled_strategies:
+            with ui.column().classes("items-center py-4"):
+                ui.icon("pause_circle").classes("text-4xl text-gray-300")
+                ui.label("暂无运行中的策略").classes("text-gray-400 mt-2")
+                ui.link("→ 配置策略", "/strategies").classes("text-sm text-blue-500 mt-1")
+        else:
+            for strategy in enabled_strategies[:3]:  # 最多显示3个
+                with ui.row().classes("w-full items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-700"):
+                    ui.icon("play_circle").classes("text-green-500")
+                    with ui.column().classes("flex-1"):
+                        ui.label(strategy.name).classes("font-medium")
+                        ui.label(f"{strategy.symbol} · {strategy.timeframe}").classes("text-xs text-gray-400")
+                    # TODO: 从实盘服务获取真实数据
+                    with ui.column().classes("items-end"):
+                        ui.label("0 笔").classes("text-sm")
+                        ui.label("$0.00").classes("text-xs text-gray-400")
+
+            if len(enabled_strategies) > 3:
+                ui.link(f"查看全部 {len(enabled_strategies)} 个策略 →", "/strategies").classes("text-sm text-blue-500 mt-2")
+
+
+def _render_backtest_status():
+    """渲染回测进程状态"""
+    with ui.card().classes("card w-full"):
+        ui.label("⚡ 回测进程").classes("text-lg font-medium mb-4")
+
+        # 检查是否有正在运行的回测
+        from services.web.backtest_manager import BacktestResultManager
+
+        try:
+            config_path = PROJECT_ROOT / "config" / "backtests.json"
+            manager = BacktestResultManager(config_path=config_path)
+            records = manager.get_all()
+            running = [r for r in records if r.status == "running"]
+        except Exception:
+            running = []
+
+        if not running:
+            with ui.column().classes("items-center py-4"):
+                ui.icon("hourglass_empty").classes("text-4xl text-gray-300")
+                ui.label("暂无运行中的回测").classes("text-gray-400 mt-2")
+                ui.link("→ 开始新回测", "/backtests").classes("text-sm text-blue-500 mt-1")
+        else:
+            for bt in running:
+                with ui.row().classes("w-full items-center gap-3 py-2"):
+                    ui.spinner(size="sm")
+                    with ui.column().classes("flex-1"):
+                        ui.label(bt.strategy_class).classes("font-medium")
+                        ui.label(f"{bt.symbol} · {bt.start_date} ~ {bt.end_date}").classes("text-xs text-gray-400")
 
 
 def _render_recent_alerts():
     """渲染最近告警"""
     with ui.card().classes("card w-full"):
         with ui.row().classes("justify-between items-center mb-4"):
-            ui.label("最近告警").classes("text-lg font-medium")
+            ui.label("⚠️ 最近告警").classes("text-lg font-medium")
 
         # 从日志文件加载真实告警
         alerts = _load_recent_alerts()
 
         if not alerts:
-            ui.label("暂无告警").classes("text-gray-400 text-center py-4")
+            ui.label("暂无告警 ✅").classes("text-gray-400 text-center py-4")
         else:
             for alert in alerts:
                 _render_alert_item(alert)
@@ -378,8 +565,10 @@ def _render_notification_test():
                 ui.notify(f"发送失败: {e}", type="negative")
 
         with ui.row().classes("gap-2 mt-4"):
-            ui.button(
+            notify_btn = ui.button(
                 "发送测试通知",
                 icon="notifications",
-                on_click=lambda: asyncio.create_task(send_test_notification()),
-            ).props("color=primary" if webhook_url else "disabled")
+                on_click=send_test_notification,
+            ).props("color=primary")
+            if not webhook_url:
+                notify_btn.disable()

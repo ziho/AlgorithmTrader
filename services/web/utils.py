@@ -1,0 +1,44 @@
+"""
+Web UI 辅助工具
+
+提供 URL 解析和候选地址扩展等通用方法。
+"""
+
+from urllib.parse import urlparse, urlunparse
+
+
+def _with_host(url: str, host: str) -> str:
+    parsed = urlparse(url)
+    if not parsed.scheme:
+        return url
+    netloc = host
+    if parsed.port:
+        netloc = f"{host}:{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))
+
+
+def candidate_urls(url: str, service_host: str) -> list[str]:
+    """
+    生成用于连接探测的候选 URL 列表。
+
+    - 当 URL 使用服务名(如 influxdb/grafana)时，追加 localhost/127.0.0.1 作为回退
+    - 当 URL 使用 localhost/127.0.0.1 时，追加服务名作为回退
+    """
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    candidates: list[str] = [url]
+
+    if hostname == service_host:
+        candidates.append(_with_host(url, "localhost"))
+        candidates.append(_with_host(url, "127.0.0.1"))
+    elif hostname in ("localhost", "127.0.0.1"):
+        candidates.append(_with_host(url, service_host))
+
+    # 去重保持顺序
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in candidates:
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped

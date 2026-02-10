@@ -9,6 +9,9 @@ Strategy 模块 - 策略管理
 
 from src.strategy.base import StrategyBase, StrategyConfig, StrategyState
 
+# 导入示例策略以触发 @register_strategy 注册
+import src.strategy.examples  # noqa: F401
+
 __all__ = [
     "StrategyBase",
     "StrategyConfig",

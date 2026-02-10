@@ -14,6 +14,7 @@ from pathlib import Path
 
 from nicegui import ui
 
+from services.web.utils import candidate_urls
 
 def render():
     """渲染设置页面"""
@@ -119,11 +120,13 @@ docker-compose up -d
                 result_label.set_text(f"❌ 错误: {e}")
                 result_label.classes(remove="text-green-600", add="text-red-600")
 
-        ui.button(
+        notify_btn = ui.button(
             "发送测试通知",
             icon="notifications_active",
-            on_click=lambda: asyncio.create_task(send_test()),
-        ).props("color=primary" if webhook_url else "disabled")
+            on_click=send_test,
+        ).props("color=primary")
+        if not webhook_url:
+            notify_btn.disable()
 
 
 def _render_database_settings():
@@ -153,25 +156,38 @@ def _render_database_settings():
                 import httpx
 
                 async with httpx.AsyncClient(timeout=5.0) as client:
-                    resp = await client.get(f"{influx_url.replace('influxdb', 'localhost')}/health")
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        status_container.clear()
-                        with status_container:
-                            ui.label("✅ 连接正常").classes("text-green-600")
-                            ui.label(f"版本: {data.get('version', 'unknown')}").classes(
+                    last_error: str | None = None
+                    for url in candidate_urls(influx_url, service_host="influxdb"):
+                        try:
+                            resp = await client.get(f"{url.rstrip('/')}/health")
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                status_container.clear()
+                                with status_container:
+                                    ui.label("✅ 连接正常").classes("text-green-600")
+                                    ui.label(
+                                        f"版本: {data.get('version', 'unknown')}"
+                                    ).classes("text-gray-500 text-sm")
+                                return
+                            last_error = f"HTTP {resp.status_code}"
+                            break
+                        except httpx.ConnectError as e:
+                            last_error = str(e)
+                            continue
+
+                    status_container.clear()
+                    with status_container:
+                        ui.label("⚠️ 连接异常").classes("text-yellow-600")
+                        if last_error:
+                            ui.label(f"错误: {last_error}").classes(
                                 "text-gray-500 text-sm"
                             )
-                    else:
-                        status_container.clear()
-                        with status_container:
-                            ui.label(f"⚠️ HTTP {resp.status_code}").classes("text-yellow-600")
             except Exception as e:
                 status_container.clear()
                 with status_container:
                     ui.label(f"❌ 连接失败: {e}").classes("text-red-600")
 
-        ui.button("测试连接", icon="sync", on_click=lambda: asyncio.create_task(check_connection())).props("flat")
+        ui.button("测试连接", icon="sync", on_click=check_connection).props("flat")
 
         # 快捷链接
         ui.separator().classes("my-4")
@@ -180,7 +196,9 @@ def _render_database_settings():
             ui.button(
                 "打开 InfluxDB UI",
                 icon="open_in_new",
-                on_click=lambda: ui.open("http://localhost:8086"),
+                on_click=lambda: ui.run_javascript(
+                    "window.open('http://' + window.location.hostname + ':8086', '_blank')"
+                ),
             ).props("flat")
 
     with ui.card().classes("card w-full mt-4"):
@@ -195,7 +213,9 @@ def _render_database_settings():
             ui.button(
                 "打开 Grafana",
                 icon="open_in_new",
-                on_click=lambda: ui.open("http://localhost:3000"),
+                on_click=lambda: ui.run_javascript(
+                    "window.open('http://' + window.location.hostname + ':3000', '_blank')"
+                ),
             ).props("flat")
 
 

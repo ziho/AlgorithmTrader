@@ -62,8 +62,8 @@ def render():
                 status=status_filter.value if status_filter.value != "全部" else None,
             )
 
-    strategy_filter.on("update:model-value", lambda: refresh_list())
-    status_filter.on("update:model-value", lambda: refresh_list())
+    strategy_filter.on("update:model-value", lambda _: refresh_list())
+    status_filter.on("update:model-value", lambda _: refresh_list())
 
     with backtest_container:
         _render_backtest_list()
@@ -147,7 +147,7 @@ def _new_backtest():
                                         ).classes("flex-1")
                                     param_inputs[name] = inp
 
-                strategy_select.on("update:model-value", lambda: update_params())
+                strategy_select.on("update:model-value", lambda _: update_params())
                 update_params()
 
             # 从已配置策略选择

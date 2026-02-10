@@ -368,11 +368,12 @@ services:
       - .env
     environment:
       - SERVICE_NAME=web
+      - PYTHONDONTWRITEBYTECODE=1
     volumes:
       - .:/app
       - ./data:/app/data
       - ./logs:/app/logs
-    command: python -m services.web.main --host 0.0.0.0 --port 8080
+    command: python -m services.web.main --host 0.0.0.0 --port 8080 --reload
     depends_on:
       - influxdb
     healthcheck:

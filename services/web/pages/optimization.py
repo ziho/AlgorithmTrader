@@ -89,7 +89,7 @@ def _new_optimization():
                         "text-xs text-gray-500 mt-2"
                     )
 
-        strategy_select.on("update:model-value", lambda: update_param_preview())
+        strategy_select.on("update:model-value", lambda _: update_param_preview())
         update_param_preview()
 
         # 优化目标（多选）
@@ -230,7 +230,12 @@ def _save_task(task: dict):
             pass
 
     tasks.append(task)
+    _write_tasks(tasks)
 
+
+def _write_tasks(tasks: list[dict]) -> None:
+    """写入任务列表"""
+    tasks_file = CONFIG_PATH / "optimization_tasks.json"
     CONFIG_PATH.mkdir(parents=True, exist_ok=True)
     tasks_file.write_text(json.dumps(tasks, indent=2, default=str))
 
@@ -245,6 +250,48 @@ def _load_tasks() -> list[dict]:
         return json.loads(tasks_file.read_text())
     except Exception:
         return []
+
+
+def _update_task(task_id: str, **changes) -> bool:
+    """更新任务状态"""
+    tasks = _load_tasks()
+    updated = False
+    for task in tasks:
+        if task.get("id") == task_id:
+            task.update(changes)
+            updated = True
+            break
+    if updated:
+        _write_tasks(tasks)
+    return updated
+
+
+def _start_task(task_id: str):
+    """标记任务为运行中"""
+    if _update_task(
+        task_id,
+        status="running",
+        progress=0,
+        started_at=datetime.now().isoformat(),
+    ):
+        ui.notify(f"任务 {task_id} 已开始", type="positive")
+        ui.navigate.reload()
+    else:
+        ui.notify("任务不存在或已更新", type="warning")
+
+
+def _cancel_task(task_id: str):
+    """取消任务"""
+    if _update_task(
+        task_id,
+        status="canceled",
+        progress=0,
+        canceled_at=datetime.now().isoformat(),
+    ):
+        ui.notify(f"任务 {task_id} 已取消", type="warning")
+        ui.navigate.reload()
+    else:
+        ui.notify("任务不存在或已更新", type="warning")
 
 
 def _load_results() -> list[dict]:
@@ -288,6 +335,8 @@ def _render_task_row(task: dict):
             ui.spinner(size="sm")
         elif status == "pending":
             ui.icon("schedule").classes("text-gray-400")
+        elif status == "canceled":
+            ui.icon("cancel").classes("text-gray-400")
         elif status == "completed":
             ui.icon("check_circle").classes("text-green-600")
         else:
@@ -311,9 +360,11 @@ def _render_task_row(task: dict):
 
         # 操作按钮
         if status == "pending":
-            ui.button(icon="play_arrow", on_click=lambda: None).props("flat dense")
+            ui.button(icon="play_arrow", on_click=lambda t=task: _start_task(t["id"])).props(
+                "flat dense"
+            )
         if status in ("pending", "running"):
-            ui.button(icon="cancel", on_click=lambda: None).props(
+            ui.button(icon="cancel", on_click=lambda t=task: _cancel_task(t["id"])).props(
                 "flat dense color=negative"
             )
 

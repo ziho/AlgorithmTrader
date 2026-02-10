@@ -24,8 +24,10 @@ import numpy as np
 
 from src.core.typing import BarFrame, StrategyOutput
 from src.strategy.base import StrategyBase, StrategyConfig
+from src.strategy.registry import register_strategy
 
 
+@register_strategy("BollingerBandsStrategy")
 class BollingerBandsStrategy(StrategyBase):
     """
     布林带均值回归策略
@@ -146,6 +148,7 @@ class BollingerBandsStrategy(StrategyBase):
         return None
 
 
+@register_strategy("RSIMeanReversionStrategy")
 class RSIMeanReversionStrategy(StrategyBase):
     """
     RSI 均值回归策略
@@ -273,6 +276,7 @@ class RSIMeanReversionStrategy(StrategyBase):
         return None
 
 
+@register_strategy("ZScoreStrategy")
 class ZScoreStrategy(StrategyBase):
     """
     Z-Score 均值回归策略

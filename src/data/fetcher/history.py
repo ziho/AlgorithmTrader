@@ -367,8 +367,8 @@ class HistoryFetcher:
                 raw_path.parent.mkdir(parents=True, exist_ok=True)
                 raw_path.write_bytes(content)
             
-            # 解析
-            df = self._parse_binance_klines(content)
+            # 解析（CPU/IO 密集，放到线程中避免阻塞事件循环）
+            df = await asyncio.to_thread(self._parse_binance_klines, content)
         
         if not df.empty:
             # 标记完成
@@ -419,16 +419,21 @@ class HistoryFetcher:
             content, status = await self._download_with_retry(url)
             
             if content and status == 200:
-                df = self._parse_binance_klines(content)
+                # 解析（CPU/IO 密集，放到线程中避免阻塞事件循环）
+                df = await asyncio.to_thread(self._parse_binance_klines, content)
                 if not df.empty:
                     all_data.append(df)
             
             await asyncio.sleep(self.request_delay / 2)
         
         if all_data:
-            result = pd.concat(all_data, ignore_index=True)
-            result = result.drop_duplicates(subset=["timestamp"])
-            return result.sort_values("timestamp").reset_index(drop=True)
+            # 合并排序在后台线程中执行，减少事件循环阻塞
+            def _merge_daily_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
+                merged = pd.concat(frames, ignore_index=True)
+                merged = merged.drop_duplicates(subset=["timestamp"])
+                return merged.sort_values("timestamp").reset_index(drop=True)
+
+            return await asyncio.to_thread(_merge_daily_frames, all_data)
         
         return pd.DataFrame()
     
@@ -517,6 +522,7 @@ class HistoryFetcher:
         start_date: datetime,
         end_date: datetime,
         skip_existing: bool = True,
+        progress_callback: Optional[callable] = None,
     ) -> DownloadStats:
         """
         下载并保存到 Parquet
@@ -565,20 +571,28 @@ class HistoryFetcher:
                 m += 1
         
         async for year, month, df in self.download_range(
-            symbol_upper, timeframe, start_date, end_date, skip_existing
+            symbol_upper,
+            timeframe,
+            start_date,
+            end_date,
+            skip_existing,
+            progress_callback=progress_callback,
         ):
             if df.empty:
                 stats.failed_months += 1
                 continue
             
-            # 过滤时间范围
+            # 过滤时间范围 - 确保时间戳比较正确
+            start_ts = pd.Timestamp(start_date).tz_convert("UTC") if start_date.tzinfo else pd.Timestamp(start_date).tz_localize("UTC")
+            end_ts = pd.Timestamp(end_date).tz_convert("UTC") if end_date.tzinfo else pd.Timestamp(end_date).tz_localize("UTC")
             df = df[
-                (df["timestamp"] >= pd.Timestamp(start_date, tz="UTC")) &
-                (df["timestamp"] <= pd.Timestamp(end_date, tz="UTC"))
+                (df["timestamp"] >= start_ts) &
+                (df["timestamp"] <= end_ts)
             ]
             
             if not df.empty:
-                rows = store.write(sym, tf, df)
+                # 写入 Parquet（CPU/IO 密集，放到线程中避免阻塞事件循环）
+                rows = await asyncio.to_thread(store.write, sym, tf, df)
                 stats.total_rows += rows
                 stats.completed_months += 1
                 

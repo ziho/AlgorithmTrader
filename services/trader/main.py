@@ -701,10 +701,13 @@ def main() -> None:
     settings = get_settings()
 
     # 解析配置
+    # 导入示例策略以触发 @register_strategy 注册
+    import src.strategy.examples  # noqa: F401
+
     config = TraderConfig(
         symbols=["BTC/USDT", "ETH/USDT"],
         timeframe="15m",
-        strategy_name="example_sma",
+        strategy_name="DualMAStrategy",
         sandbox=True,
         dry_run=settings.is_dev,  # 开发环境默认干运行
     )
