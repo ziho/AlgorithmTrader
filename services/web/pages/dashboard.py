@@ -344,6 +344,31 @@ def _render_recent_alerts():
         with ui.row().classes("justify-between items-center mb-4"):
             ui.label("⚠️ 最近告警").classes("text-lg font-medium")
 
+            async def clear_old_logs():
+                """清理旧的错误日志"""
+                import shutil
+                log_dir = Path(__file__).parent.parent.parent.parent / "logs"
+                if not log_dir.exists():
+                    ui.notify("日志目录不存在", type="warning")
+                    return
+                cleared = 0
+                for log_file in log_dir.glob("*.log"):
+                    try:
+                        # 只保留最后 50 行 (清除历史错误)
+                        lines = log_file.read_text().strip().split("\n")
+                        if len(lines) > 50:
+                            log_file.write_text("\n".join(lines[-50:]) + "\n")
+                            cleared += 1
+                    except Exception:
+                        pass
+                ui.notify(f"已清理 {cleared} 个日志文件", type="positive")
+                # 刷新页面
+                ui.navigate.reload()
+
+            ui.button("清理日志", icon="delete_sweep", on_click=clear_old_logs).props(
+                "flat dense color=grey"
+            )
+
         # 从日志文件加载真实告警
         alerts = _load_recent_alerts()
 
