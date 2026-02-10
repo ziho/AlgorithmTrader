@@ -22,7 +22,7 @@ class Environment(str, Enum):
 class BinanceSettings(BaseSettings):
     """Binance 交易所配置"""
 
-    model_config = SettingsConfigDict(env_prefix="BINANCE_")
+    model_config = SettingsConfigDict(env_prefix="BINANCE_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     api_key: SecretStr = Field(default=SecretStr(""), description="Binance API Key")
     api_secret: SecretStr = Field(default=SecretStr(""), description="Binance API Secret")
@@ -50,7 +50,7 @@ class BinanceSettings(BaseSettings):
 class OKXSettings(BaseSettings):
     """OKX 交易所配置"""
 
-    model_config = SettingsConfigDict(env_prefix="OKX_")
+    model_config = SettingsConfigDict(env_prefix="OKX_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     api_key: SecretStr = Field(default=SecretStr(""), description="OKX API Key")
     api_secret: SecretStr = Field(default=SecretStr(""), description="OKX API Secret")
@@ -71,7 +71,7 @@ class IBKRSettings(BaseSettings):
 class InfluxDBSettings(BaseSettings):
     """InfluxDB 配置"""
 
-    model_config = SettingsConfigDict(env_prefix="INFLUXDB_")
+    model_config = SettingsConfigDict(env_prefix="INFLUXDB_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     url: str = Field(default="http://localhost:8086", description="InfluxDB URL")
     token: SecretStr = Field(default=SecretStr(""), description="InfluxDB Token")
@@ -82,7 +82,7 @@ class InfluxDBSettings(BaseSettings):
 class TelegramSettings(BaseSettings):
     """Telegram 通知配置"""
 
-    model_config = SettingsConfigDict(env_prefix="TELEGRAM_")
+    model_config = SettingsConfigDict(env_prefix="TELEGRAM_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     bot_token: SecretStr = Field(default=SecretStr(""), description="Bot Token")
     chat_id: str = Field(default="", description="Chat ID")
@@ -96,7 +96,7 @@ class TelegramSettings(BaseSettings):
 class WebhookSettings(BaseSettings):
     """Webhook 通知配置"""
 
-    model_config = SettingsConfigDict(env_prefix="WEBHOOK_")
+    model_config = SettingsConfigDict(env_prefix="WEBHOOK_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     url: str = Field(default="", description="Webhook URL (支持 Bark 或通用 Webhook)")
 

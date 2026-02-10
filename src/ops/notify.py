@@ -218,13 +218,18 @@ class TelegramNotifier:
             bool: 是否发送成功
         """
         try:
-            # 尝试获取当前事件循环
             try:
-                asyncio.get_running_loop()
-                # 如果在事件循环中，创建任务
-                asyncio.ensure_future(self.send_async(message))
-                return True  # 异步发送，不等待结果
-
+                loop = asyncio.get_running_loop()
+                # 在已有事件循环中，使用 run_coroutine_threadsafe 安全调度
+                import concurrent.futures
+                future = asyncio.run_coroutine_threadsafe(self.send_async(message), loop)
+                try:
+                    return future.result(timeout=30)
+                except (concurrent.futures.TimeoutError, Exception) as e:
+                    logger.warning("telegram_send_schedule_fallback", error=str(e))
+                    # 如果 run_coroutine_threadsafe 失败（同一线程），使用 ensure_future
+                    asyncio.ensure_future(self.send_async(message))
+                    return True
             except RuntimeError:
                 # 没有事件循环，创建新的
                 return asyncio.run(self.send_async(message))

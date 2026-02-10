@@ -32,6 +32,7 @@ from src.execution.broker_base import BrokerBase, Position
 from src.execution.order_manager import OrderManager
 from src.ops.logging import configure_logging
 from src.ops.notify import get_notifier
+from src.ops.heartbeat import HeartbeatWriter
 from src.ops.scheduler import TradingScheduler
 from src.risk.engine import RiskContext, RiskEngine, create_default_risk_engine
 from src.strategy.base import StrategyBase
@@ -157,6 +158,19 @@ class LiveTrader:
         # 幂等性: bar 时间戳 -> 是否已处理
         self._processed_bars: set[str] = set()
 
+        # 心跳写入器
+        self._heartbeat = HeartbeatWriter(
+            service="trader",
+            interval=30.0,
+            details_func=lambda: {
+                "strategy": config.strategy_name,
+                "symbols": config.symbols,
+                "bars_processed": self.state.bars_processed,
+                "orders_placed": self.state.orders_placed,
+                "api_configured": getattr(self._broker, "api_configured", True),
+            },
+        )
+
     @property
     def broker(self) -> BrokerBase:
         """获取 Broker"""
@@ -209,6 +223,9 @@ class LiveTrader:
         self.state.running = True
         self.state.started_at = datetime.now(UTC)
 
+        # 启动心跳
+        self._heartbeat.start()
+
         logger.info("trader_started")
 
         # 发送启动通知
@@ -227,6 +244,9 @@ class LiveTrader:
         logger.info("trader_stopping")
 
         self.state.running = False
+
+        # 停止心跳
+        self._heartbeat.stop()
 
         # 停止调度器
         self._scheduler.stop(wait=True)
@@ -276,6 +296,11 @@ class LiveTrader:
 
     def _sync_account(self) -> None:
         """同步账户状态"""
+        # 跳过未配置 API Key 的情况, 避免日志刷屏
+        if hasattr(self._broker, "api_configured") and not self._broker.api_configured:
+            logger.debug("sync_account_skipped", reason="API keys not configured")
+            return
+
         try:
             # 获取余额
             balance_result = self._broker.get_balance("USDT")
@@ -487,7 +512,7 @@ class LiveTrader:
                 )
 
                 # 如果缓存的最后一条数据在当前 bar 时间之前不超过 2 个 bar 周期，使用缓存
-                tf_minutes = timeframe.to_minutes()
+                tf_minutes = timeframe.minutes
                 if (
                     last_ts
                     and (bar_time_utc - last_ts).total_seconds() < tf_minutes * 60 * 2
@@ -497,7 +522,7 @@ class LiveTrader:
         # 从 ParquetStore 读取
         try:
             # 计算需要读取的时间范围
-            tf_minutes = timeframe.to_minutes()
+            tf_minutes = timeframe.minutes
             lookback_minutes = tf_minutes * self._history_lookback
             start_time = bar_time - timedelta(minutes=lookback_minutes)
 

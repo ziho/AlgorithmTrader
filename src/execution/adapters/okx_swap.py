@@ -253,7 +253,7 @@ class OKXSwapBroker(BrokerBase):
                     max_retries=self.max_retries,
                     error=str(e),
                 )
-                time.sleep(self.retry_delay)
+                time.sleep(self.retry_delay * (attempt + 1))  # exponential backoff
                 last_error = e
 
             except ccxt.ExchangeNotAvailable as e:

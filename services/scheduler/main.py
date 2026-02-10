@@ -24,6 +24,7 @@ from src.core.config import get_settings
 from src.ops.healthcheck import check_influxdb_health
 from src.ops.logging import configure_logging
 from src.ops.notify import get_notifier
+from src.ops.heartbeat import HeartbeatWriter
 from src.ops.scheduler import (
     ScheduledTask,
     TaskResult,
@@ -183,8 +184,15 @@ class SchedulerService:
             "old_reports_cleaned": 0,
         }
 
-        # 1. 清理旧日志文件 (保留最近 7 天)
+        # 1. 清理旧日志文件 (保留最近 7 天) + 确保总大小不超限
         try:
+            from src.ops.logging import cleanup_old_logs
+
+            log_result = cleanup_old_logs(max_size_mb=200)
+            if log_result.get("cleaned", 0) > 0:
+                logger.info("log_size_cleanup", **log_result)
+                results["logs_cleaned"] += log_result["cleaned"]
+
             logs_dir = Path("logs")
             if logs_dir.exists():
                 now = datetime.now(UTC)
@@ -324,6 +332,18 @@ class SchedulerService:
         self.state.running = True
         self.state.started_at = datetime.now(UTC)
 
+        # 启动心跳
+        self._heartbeat = HeartbeatWriter(
+            service="scheduler",
+            interval=30.0,
+            details_func=lambda: {
+                "tasks_scheduled": self.state.tasks_scheduled,
+                "tasks_executed": self.state.tasks_executed,
+                "tasks_failed": self.state.tasks_failed,
+            },
+        )
+        self._heartbeat.start()
+
         logger.info(
             "scheduler_service_started",
             tasks_count=self.state.tasks_scheduled,
@@ -349,6 +369,11 @@ class SchedulerService:
         logger.info("scheduler_service_stopping")
 
         self.state.running = False
+
+        # 停止心跳
+        if hasattr(self, "_heartbeat"):
+            self._heartbeat.stop()
+
         self._scheduler.stop(wait=wait)
 
         # 发送停止通知

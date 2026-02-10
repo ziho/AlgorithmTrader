@@ -21,6 +21,7 @@ import structlog
 
 from src.core.config import get_settings
 from src.ops.logging import configure_logging
+from src.ops.heartbeat import HeartbeatWriter
 from src.ops.notify import (
     NotifyLevel,
     NotifyMessage,
@@ -210,6 +211,18 @@ class NotifierService:
         self.state.running = True
         self.state.started_at = datetime.now(UTC)
 
+        # 启动心跳
+        self._heartbeat = HeartbeatWriter(
+            service="notifier",
+            interval=30.0,
+            details_func=lambda: {
+                "messages_sent": self.state.messages_sent,
+                "messages_failed": self.state.messages_failed,
+                "telegram_enabled": self.config.telegram_enabled,
+            },
+        )
+        self._heartbeat.start()
+
         # 启动处理任务
         tasks = [
             asyncio.create_task(self._process_messages()),
@@ -239,6 +252,10 @@ class NotifierService:
 
         self.state.running = False
         self._stop_event.set()
+
+        # 停止心跳
+        if hasattr(self, "_heartbeat"):
+            self._heartbeat.stop()
 
         # 发送停止通知
         self._notifier.notify_system(

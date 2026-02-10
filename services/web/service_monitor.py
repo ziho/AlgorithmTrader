@@ -5,8 +5,9 @@
 
 支持多种检测方式:
 1. HTTP 健康端点 (InfluxDB, Grafana, Web)
-2. Docker 容器状态检查 (Collector, Trader, Scheduler)
-3. 进程文件检查 (.pid 文件)
+2. 心跳文件检查 (Collector, Trader, Scheduler, Notifier)
+3. Docker 容器状态检查 (备用)
+4. 进程文件检查 (.pid 文件, 备用)
 """
 
 import asyncio
@@ -21,6 +22,7 @@ import httpx
 
 from services.web.utils import candidate_urls
 from src.core.config import get_settings
+from src.ops.heartbeat import is_heartbeat_stale, read_all_heartbeats
 
 @dataclass
 class ServiceStatus:
@@ -192,11 +194,114 @@ class ServiceMonitor:
         )
 
     async def _check_docker_containers(self) -> list[ServiceStatus]:
-        """通过 Docker 检查容器状态"""
-        statuses = []
+        """检查服务容器状态（优先心跳文件，Docker 命令备用）"""
+        # 先尝试心跳文件（跨容器共享 logs 目录）
+        statuses = self._check_heartbeats()
+        if statuses:
+            return statuses
 
-        # 初始化所有服务为 unknown
-        service_found = {
+        # 备用: Docker CLI
+        statuses = self._check_via_docker()
+        if statuses:
+            return statuses
+
+        # 最终备用: PID 文件
+        return await self._check_pid_files()
+
+    # ------------------------------------------------------------------
+    # 心跳文件检查 (首选)
+    # ------------------------------------------------------------------
+
+    def _check_heartbeats(self) -> list[ServiceStatus]:
+        """通过心跳文件检查服务状态"""
+        heartbeats = read_all_heartbeats()
+
+        # 没有任何心跳文件 → 回退到其他方法
+        if not heartbeats:
+            return []
+
+        statuses: list[ServiceStatus] = []
+        services = ["collector", "trader", "scheduler", "notifier"]
+
+        for svc in services:
+            display_name = svc.capitalize()
+            hb = heartbeats.get(svc)
+
+            if hb is None:
+                statuses.append(
+                    ServiceStatus(
+                        name=display_name,
+                        status="unknown",
+                        message="服务未启用",
+                    )
+                )
+                continue
+
+            if is_heartbeat_stale(hb):
+                statuses.append(
+                    ServiceStatus(
+                        name=display_name,
+                        status="unhealthy",
+                        message="心跳超时",
+                        details=hb.details,
+                    )
+                )
+                continue
+
+            if hb.status in ("running", "starting"):
+                uptime_str = self._format_uptime(hb.uptime_seconds)
+                statuses.append(
+                    ServiceStatus(
+                        name=display_name,
+                        status="healthy",
+                        message=f"运行 {uptime_str}",
+                        details=hb.details,
+                    )
+                )
+            elif hb.status == "error":
+                statuses.append(
+                    ServiceStatus(
+                        name=display_name,
+                        status="unhealthy",
+                        message=hb.details.get("error", "异常")[:50],
+                        details=hb.details,
+                    )
+                )
+            else:
+                statuses.append(
+                    ServiceStatus(
+                        name=display_name,
+                        status="unknown",
+                        message=hb.status,
+                        details=hb.details,
+                    )
+                )
+
+        return statuses
+
+    @staticmethod
+    def _format_uptime(seconds: float) -> str:
+        """格式化运行时长"""
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        if seconds < 3600:
+            return f"{int(seconds // 60)}m"
+        if seconds < 86400:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            return f"{hours}h{minutes}m"
+        days = int(seconds // 86400)
+        hours = int((seconds % 86400) // 3600)
+        return f"{days}d{hours}h"
+
+    # ------------------------------------------------------------------
+    # Docker CLI 检查 (备用)
+    # ------------------------------------------------------------------
+
+    def _check_via_docker(self) -> list[ServiceStatus]:
+        """通过 Docker CLI 检查容器状态（备用方案）"""
+        statuses: list[ServiceStatus] = []
+        service_found: dict[str, bool] = {
             "Collector": False,
             "Trader": False,
             "Scheduler": False,
@@ -204,112 +309,73 @@ class ServiceMonitor:
         }
 
         try:
-            # 使用 docker ps 检查容器状态
             result = subprocess.run(
-                [
-                    "docker",
-                    "ps",
-                    "-a",
-                    "--format",
-                    "{{.Names}}\t{{.Status}}\t{{.State}}",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
+                ["docker", "ps", "-a", "--format", "{{.Names}}\t{{.Status}}\t{{.State}}"],
+                capture_output=True, text=True, timeout=5,
             )
+            if result.returncode != 0:
+                return []
 
-            if result.returncode == 0:
-                for line in result.stdout.strip().split("\n"):
-                    if not line:
-                        continue
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split("\t")
+                if len(parts) < 3:
+                    continue
 
-                    parts = line.split("\t")
-                    if len(parts) >= 3:
-                        container_name = parts[0]
-                        status_text = parts[1]
-                        state = parts[2]
+                container_name, status_text, state = parts[0], parts[1], parts[2]
+                service_name = None
+                for pattern, svc_name in self.CONTAINER_SERVICES.items():
+                    if pattern in container_name:
+                        service_name = svc_name
+                        break
 
-                        # 查找对应的服务名称
-                        service_name = None
-                        for pattern, svc_name in self.CONTAINER_SERVICES.items():
-                            if pattern in container_name or container_name.endswith(
-                                f"-{pattern.split('-')[-1]}"
-                            ):
-                                service_name = svc_name
-                                break
+                if service_name and service_name in service_found:
+                    service_found[service_name] = True
+                    if state == "running":
+                        statuses.append(ServiceStatus(
+                            name=service_name, status="healthy",
+                            message=self._parse_uptime(status_text),
+                        ))
+                    elif state == "exited":
+                        statuses.append(ServiceStatus(
+                            name=service_name, status="unhealthy",
+                            message="已停止",
+                        ))
+                    else:
+                        statuses.append(ServiceStatus(
+                            name=service_name, status="unknown",
+                            message=status_text[:30],
+                        ))
 
-                        if service_name and service_name in service_found:
-                            service_found[service_name] = True
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            return []
 
-                            if state == "running":
-                                # 解析运行时长
-                                message = self._parse_uptime(status_text)
-                                statuses.append(
-                                    ServiceStatus(
-                                        name=service_name,
-                                        status="healthy",
-                                        message=message,
-                                    )
-                                )
-                            elif state == "exited":
-                                statuses.append(
-                                    ServiceStatus(
-                                        name=service_name,
-                                        status="unhealthy",
-                                        message="已停止",
-                                        details={"status": status_text},
-                                    )
-                                )
-                            else:
-                                statuses.append(
-                                    ServiceStatus(
-                                        name=service_name,
-                                        status="unknown",
-                                        message=status_text[:30],
-                                    )
-                                )
-
-        except FileNotFoundError:
-            # Docker 命令不可用，尝试使用 PID 文件检查
-            statuses = await self._check_pid_files()
-            return statuses
-        except subprocess.TimeoutExpired:
-            pass
-        except Exception:
-            pass
-
-        # 添加未找到的服务
         for service_name, found in service_found.items():
             if not found:
-                statuses.append(
-                    ServiceStatus(
-                        name=service_name,
-                        status="unknown",
-                        message="服务未部署",
-                    )
-                )
+                statuses.append(ServiceStatus(
+                    name=service_name, status="unknown", message="服务未部署",
+                ))
 
         return statuses
 
-    def _parse_uptime(self, status_text: str) -> str:
+    @staticmethod
+    def _parse_uptime(status_text: str) -> str:
         """解析 Docker 状态文本中的运行时长"""
-        # 示例: "Up 2 hours", "Up 5 minutes", "Up About a minute"
-        status_lower = status_text.lower()
-
-        if "up" in status_lower:
-            # 提取 Up 后面的时间
+        if "up" in status_text.lower():
             parts = status_text.split()
             if len(parts) >= 2:
-                time_parts = parts[1:]
-                return f"运行 {' '.join(time_parts)}"
-
+                return f"运行 {' '.join(parts[1:])}"
         return status_text[:30]
 
-    async def _check_pid_files(self) -> list[ServiceStatus]:
-        """通过 PID 文件检查服务状态（备用方案）"""
-        statuses = []
-        pid_dir = self._data_dir / ".pids"
+    # ------------------------------------------------------------------
+    # PID 文件检查 (最终备用)
+    # ------------------------------------------------------------------
 
+    async def _check_pid_files(self) -> list[ServiceStatus]:
+        """通过 PID 文件检查服务状态（最终备用方案）"""
+        statuses: list[ServiceStatus] = []
+        pid_dir = self._data_dir / ".pids"
         services = ["collector", "trader", "scheduler", "notifier"]
 
         for service in services:
@@ -319,42 +385,22 @@ class ServiceMonitor:
             if pid_file.exists():
                 try:
                     pid = int(pid_file.read_text().strip())
-                    # 检查进程是否存在
-                    import os
-
-                    os.kill(pid, 0)  # 不会真正杀死进程，只是检查存在性
-                    statuses.append(
-                        ServiceStatus(
-                            name=service_name,
-                            status="healthy",
-                            message=f"PID {pid}",
-                        )
-                    )
+                    os.kill(pid, 0)
+                    statuses.append(ServiceStatus(
+                        name=service_name, status="healthy", message=f"PID {pid}",
+                    ))
                 except (ProcessLookupError, ValueError):
-                    statuses.append(
-                        ServiceStatus(
-                            name=service_name,
-                            status="unhealthy",
-                            message="进程不存在",
-                        )
-                    )
+                    statuses.append(ServiceStatus(
+                        name=service_name, status="unhealthy", message="进程不存在",
+                    ))
                 except PermissionError:
-                    # 进程存在但无权限检查
-                    statuses.append(
-                        ServiceStatus(
-                            name=service_name,
-                            status="healthy",
-                            message="运行中",
-                        )
-                    )
+                    statuses.append(ServiceStatus(
+                        name=service_name, status="healthy", message="运行中",
+                    ))
             else:
-                statuses.append(
-                    ServiceStatus(
-                        name=service_name,
-                        status="unknown",
-                        message="服务未启动",
-                    )
-                )
+                statuses.append(ServiceStatus(
+                    name=service_name, status="unknown", message="服务未启用",
+                ))
 
         return statuses
 

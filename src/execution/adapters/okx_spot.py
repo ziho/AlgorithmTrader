@@ -83,12 +83,26 @@ class OKXSpotBroker(BrokerBase):
         # ccxt exchange 实例
         self._exchange: ccxt.okx | None = None
 
+        # API Key 是否已配置
+        self._api_configured = bool(self._api_key and self._api_secret and self._passphrase)
+
         # 限频控制
         self._last_request_time: float = 0
         self._min_request_interval: float = 0.1  # 100ms
 
+    @property
+    def api_configured(self) -> bool:
+        """API Key 是否已配置"""
+        return self._api_configured
+
     def connect(self) -> BrokerResult:
         """连接到 OKX"""
+        if not self._api_configured:
+            logger.warning(
+                "okx_api_keys_not_configured",
+                hint="请在 .env 文件中设置 OKX_API_KEY, OKX_API_SECRET, OKX_PASSPHRASE",
+            )
+            # 仍然创建 exchange 对象以支持公开 API (行情等)
         try:
             self._exchange = ccxt.okx(
                 {
@@ -168,7 +182,7 @@ class OKXSpotBroker(BrokerBase):
                     max_retries=self.max_retries,
                     error=str(e),
                 )
-                time.sleep(self.retry_delay)
+                time.sleep(self.retry_delay * (attempt + 1))  # exponential backoff
                 last_error = e
 
             except ccxt.ExchangeNotAvailable as e:
@@ -428,6 +442,12 @@ class OKXSpotBroker(BrokerBase):
         """查询余额"""
         if not self._connected or not self._exchange:
             return BrokerResult.fail("NOT_CONNECTED", "Broker not connected")
+
+        if not self._api_configured:
+            return BrokerResult.fail(
+                "API_NOT_CONFIGURED",
+                "OKX API Key 未配置，请在 .env 中设置 OKX_API_KEY/OKX_API_SECRET/OKX_PASSPHRASE",
+            )
 
         try:
             raw_balance = self._retry_request(self._exchange.fetch_balance)

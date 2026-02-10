@@ -145,3 +145,97 @@ def get_logger(name: str | None = None) -> structlog.BoundLogger:
         structlog.BoundLogger 实例
     """
     return structlog.get_logger(name)
+
+
+# ======================================================================
+# 日志目录管理
+# ======================================================================
+
+# 日志目录总大小上限 (默认 200MB)
+LOG_DIR_MAX_SIZE_MB = 200
+
+
+def get_log_dir_size_mb() -> float:
+    """获取日志目录总大小 (MB)"""
+    from pathlib import Path
+    settings = get_settings()
+    log_dir = settings.log_dir
+    if not log_dir.exists():
+        return 0.0
+    total = sum(f.stat().st_size for f in log_dir.rglob("*") if f.is_file())
+    return total / (1024 * 1024)
+
+
+def cleanup_old_logs(max_size_mb: float = LOG_DIR_MAX_SIZE_MB) -> dict:
+    """
+    清理旧日志文件，确保总大小不超过上限。
+
+    策略:
+    1. 先删除 .log.N 备份文件（从最旧开始）
+    2. 如果仍超限，截断最大的活跃日志文件
+
+    Returns:
+        清理报告 dict
+    """
+    from pathlib import Path
+
+    settings = get_settings()
+    log_dir = settings.log_dir
+    if not log_dir.exists():
+        return {"status": "ok", "message": "日志目录不存在"}
+
+    current_size = get_log_dir_size_mb()
+    if current_size <= max_size_mb:
+        return {
+            "status": "ok",
+            "size_mb": round(current_size, 1),
+            "max_mb": max_size_mb,
+            "cleaned": 0,
+        }
+
+    cleaned_count = 0
+    cleaned_bytes = 0
+
+    # 阶段1: 删除轮转备份 (.log.1, .log.2, ... 按修改时间排序)
+    backup_files = sorted(
+        log_dir.glob("*.log.*"),
+        key=lambda f: f.stat().st_mtime,
+    )
+    for bf in backup_files:
+        if get_log_dir_size_mb() <= max_size_mb * 0.8:  # 清到80%停止
+            break
+        try:
+            size = bf.stat().st_size
+            bf.unlink()
+            cleaned_count += 1
+            cleaned_bytes += size
+        except Exception:
+            pass
+
+    # 阶段2: 如果仍然超限，截断最大的活跃日志
+    if get_log_dir_size_mb() > max_size_mb:
+        active_logs = sorted(
+            log_dir.glob("*.log"),
+            key=lambda f: f.stat().st_size,
+            reverse=True,
+        )
+        for lf in active_logs:
+            if get_log_dir_size_mb() <= max_size_mb * 0.8:
+                break
+            try:
+                # 保留最后 1000 行
+                lines = lf.read_text(encoding="utf-8", errors="ignore").split("\n")
+                keep = lines[-1000:] if len(lines) > 1000 else lines
+                lf.write_text("\n".join(keep), encoding="utf-8")
+                cleaned_count += 1
+            except Exception:
+                pass
+
+    final_size = get_log_dir_size_mb()
+    return {
+        "status": "cleaned",
+        "size_mb": round(final_size, 1),
+        "max_mb": max_size_mb,
+        "cleaned": cleaned_count,
+        "freed_mb": round((current_size - final_size), 1),
+    }

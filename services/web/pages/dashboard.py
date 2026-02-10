@@ -355,52 +355,125 @@ def _render_recent_alerts():
 
 
 def _load_recent_alerts() -> list[dict]:
-    """加载最近告警（从日志读取）"""
-    import re
+    """加载最近告警（从 JSON 结构化日志读取）"""
+    import json
     from pathlib import Path
 
-    alerts = []
+    alerts: list[dict] = []
+    seen_messages: set[str] = set()  # 去重
     log_dir = Path(__file__).parent.parent.parent.parent / "logs"
 
-    # 尝试读取最近的日志文件
+    # 读取所有日志文件
     log_files = (
-        sorted(log_dir.glob("*.log"), reverse=True)[:3] if log_dir.exists() else []
+        sorted(log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)[:5]
+        if log_dir.exists()
+        else []
     )
 
     for log_file in log_files:
         try:
-            lines = log_file.read_text().split("\n")[-100:]  # 最后100行
+            lines = log_file.read_text().split("\n")[-200:]  # 最后200行
             for line in reversed(lines):
-                if len(alerts) >= 5:  # 最多5条
+                if len(alerts) >= 8:
                     break
 
-                # 解析日志行
-                if "error" in line.lower():
-                    match = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)
-                    time_str = match.group(0) if match else "未知时间"
-                    message = (
-                        line[line.find("]") + 1 :].strip()
-                        if "]" in line
-                        else line[:100]
-                    )
-                    alerts.append(
-                        {"level": "error", "message": message[:80], "time": time_str}
-                    )
-                elif "warning" in line.lower():
-                    match = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)
-                    time_str = match.group(0) if match else "未知时间"
-                    message = (
-                        line[line.find("]") + 1 :].strip()
-                        if "]" in line
-                        else line[:100]
-                    )
-                    alerts.append(
-                        {"level": "warning", "message": message[:80], "time": time_str}
-                    )
+                line = line.strip()
+                if not line:
+                    continue
+
+                # 尝试 JSON 解析（structlog 输出）
+                try:
+                    entry = json.loads(line)
+                    level = entry.get("level", "").lower()
+                    if level not in ("error", "warning"):
+                        continue
+
+                    event = entry.get("event", "")
+                    error = entry.get("error", "")
+                    logger_name = entry.get("logger", "")
+                    timestamp = entry.get("timestamp", "")
+
+                    # 构建可读消息
+                    if error:
+                        # 尝试解析嵌套的 JSON 错误（如 OKX 返回）
+                        try:
+                            # "okx {\"msg\":\"Invalid OK-ACCESS-KEY\",\"code\":\"50111\"}"
+                            if error.startswith("okx "):
+                                inner = json.loads(error[4:])
+                                message = f"[{event}] OKX: {inner.get('msg', error)} (code: {inner.get('code', '?')})"
+                            else:
+                                message = f"[{event}] {error}"
+                        except (json.JSONDecodeError, Exception):
+                            message = f"[{event}] {error}" if event else error
+                    elif event:
+                        message = event
+                    else:
+                        continue
+
+                    # 去重: 相同事件+错误只保留最新一条
+                    dedup_key = f"{event}|{error[:50]}"
+                    if dedup_key in seen_messages:
+                        continue
+                    seen_messages.add(dedup_key)
+
+                    # 格式化时间
+                    time_str = _format_log_time(timestamp)
+
+                    # 来源 (从 logger 提取简短名)
+                    source = logger_name.split(".")[-1] if logger_name else log_file.stem
+
+                    alerts.append({
+                        "level": level,
+                        "message": message[:120],
+                        "time": time_str,
+                        "source": source,
+                    })
+
+                except json.JSONDecodeError:
+                    # 非 JSON 格式日志行，使用旧方式解析
+                    if "error" in line.lower():
+                        import re
+                        match = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)
+                        time_str = match.group(0) if match else "未知时间"
+                        message = line[line.find("]") + 1:].strip() if "]" in line else line[:100]
+                        dedup_key = message[:50]
+                        if dedup_key not in seen_messages:
+                            seen_messages.add(dedup_key)
+                            alerts.append({
+                                "level": "error",
+                                "message": message[:120],
+                                "time": time_str,
+                                "source": log_file.stem,
+                            })
+
         except Exception:
             pass
 
     return alerts
+
+
+def _format_log_time(timestamp: str) -> str:
+    """格式化日志时间为相对时间"""
+    try:
+        from datetime import UTC, datetime as dt
+        ts = dt.fromisoformat(timestamp)
+        now = dt.now(UTC)
+        diff = now - ts
+
+        if diff.days > 0:
+            return f"{diff.days}天前"
+        hours = diff.seconds // 3600
+        if hours > 0:
+            return f"{hours}小时前"
+        minutes = diff.seconds // 60
+        if minutes > 0:
+            return f"{minutes}分钟前"
+        return "刚刚"
+    except Exception:
+        # 回退：截取时间部分
+        if "T" in timestamp:
+            return timestamp.split("T")[1][:8]
+        return timestamp[:19]
 
 
 def _render_alert_item(alert: dict):
@@ -425,7 +498,11 @@ def _render_alert_item(alert: dict):
         )
         with ui.column().classes("flex-1 gap-0"):
             ui.label(alert["message"]).classes("text-sm")
-            ui.label(alert["time"]).classes("text-xs text-gray-400")
+            with ui.row().classes("gap-2"):
+                ui.label(alert["time"]).classes("text-xs text-gray-400")
+                source = alert.get("source", "")
+                if source:
+                    ui.label(f"· {source}").classes("text-xs text-gray-400")
 
 
 def _render_recent_backtests():

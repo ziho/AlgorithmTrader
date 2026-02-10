@@ -15,3 +15,4 @@ __all__ = [
     "fetch_ohlcv_simple",
     "BinanceConnector",
     "BinanceDataDownloader",
+]

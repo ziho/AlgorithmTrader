@@ -23,7 +23,7 @@ from src.core.timeframes import Timeframe
 from src.data.connectors.okx import OKXConnector
 from src.data.storage.influx_store import InfluxStore
 from src.data.storage.parquet_store import ParquetStore
-from src.ops.logging import get_logger
+from src.ops.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
 
@@ -586,12 +586,25 @@ async def run_collector(
         influx_url: InfluxDB URL
         influx_token: InfluxDB Token
     """
+    from src.ops.heartbeat import HeartbeatWriter
+
     collector = DataCollector(
         symbols=symbols,
         timeframes=timeframes,
         influx_url=influx_url,
         influx_token=influx_token,
     )
+
+    # 启动心跳
+    heartbeat = HeartbeatWriter(
+        service="collector",
+        interval=30.0,
+        details_func=lambda: {
+            "symbols": [str(s) for s in collector.symbols],
+            "timeframes": [str(t) for t in collector.timeframes],
+        },
+    )
+    heartbeat.start()
 
     try:
         # 初始回填
@@ -612,12 +625,15 @@ async def run_collector(
     except KeyboardInterrupt:
         logger.info("collector_interrupted")
     finally:
+        heartbeat.stop()
         await collector.close()
 
 
 def main():
     """Collector 服务主入口"""
     import argparse
+
+    configure_logging(service_name="collector")
 
     parser = argparse.ArgumentParser(description="Data Collector Service")
     parser.add_argument(
