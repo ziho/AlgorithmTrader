@@ -18,28 +18,24 @@ def safe_timer(
     *,
     once: bool = False,
 ) -> ui.timer:
-    """创建安全的 ``ui.timer``，自动在 parent slot 被销毁时停用。
+    """创建安全的 ``ui.timer``，自动在客户端断开时停用。
 
     NiceGUI 的 ``ui.timer`` 在页面导航后仍继续运行，但其 parent element
     已被删除，导致大量 ``RuntimeError: The parent slot of the element has
-    been deleted.`` 错误。此包装器在回调出现该异常时自动将 timer 停用。
+    been deleted.`` 错误。
+
+    修复方式:
+    1. 监听 ``app.on_disconnect`` 事件，在客户端断开时停用 timer
+    2. 用 ``active=False`` 安全关闭，避免 parent_slot 异常
     """
+    from nicegui import app
 
-    timer_ref: ui.timer | None = None
+    timer_ref = ui.timer(interval, callback, once=once)
 
-    def _wrapper():
-        try:
-            result = callback()
-            # 支持 async 回调
-            return result
-        except RuntimeError as exc:
-            if "parent slot" in str(exc) and timer_ref is not None:
-                timer_ref.active = False
-            # 不再向上传播，避免日志洪泛
-        except Exception:
-            pass  # 其它异常由 NiceGUI 内部处理
+    def _on_disconnect():
+        timer_ref.active = False
 
-    timer_ref = ui.timer(interval, _wrapper, once=once)
+    app.on_disconnect(_on_disconnect)
     return timer_ref
 
 

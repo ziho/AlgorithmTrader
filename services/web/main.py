@@ -407,8 +407,6 @@ def main():
         reload=args.reload,
         show=False,  # 不自动打开浏览器
         reconnect_timeout=60.0,  # WebSocket 断连后 60s 内自动重连
-        # Socket.IO 调优：保持 WebSocket 连接稳定
-        socket_io_js_extra_headers={},
     )
 
 
