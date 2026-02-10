@@ -20,8 +20,8 @@ from typing import Any
 import structlog
 
 from src.core.config import get_settings
-from src.ops.logging import configure_logging
 from src.ops.heartbeat import HeartbeatWriter
+from src.ops.logging import configure_logging
 from src.ops.notify import (
     NotifyLevel,
     NotifyMessage,

@@ -7,9 +7,10 @@
 - 批量计算与缓存
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd

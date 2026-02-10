@@ -13,11 +13,26 @@ Web 管理服务主入口
     python -m services.web.main
 """
 
+from pathlib import Path
+
+from dotenv import load_dotenv
 from nicegui import app, ui
 
-from services.web.pages import backtests, dashboard, data, optimization, settings, strategies
+from services.web.pages import (
+    backtests,
+    dashboard,
+    data,
+    notifications,
+    optimization,
+    settings,
+    strategies,
+)
 from services.web.state import AppState
 from src.ops.logging import get_logger
+
+# 加载 .env 文件到 os.environ（确保所有 os.getenv() 调用都能读取到值）
+_project_root = Path(__file__).parent.parent.parent
+load_dotenv(_project_root / ".env", override=False)
 
 logger = get_logger(__name__)
 
@@ -60,6 +75,7 @@ def create_header():
                 ui.link("策略", "/strategies").classes("nav-link text-base")
                 ui.link("回测", "/backtests").classes("nav-link text-base")
                 ui.link("优化", "/optimization").classes("nav-link text-base")
+                ui.link("通知", "/notifications").classes("nav-link text-base")
                 ui.link("设置", "/settings").classes("nav-link text-base")
 
         # 暗色模式切换（三态：跟随系统、亮色、暗色）
@@ -234,6 +250,13 @@ def optimization_page():
 def data_page():
     """数据管理页"""
     data.render()
+
+
+@ui.page("/notifications")
+@create_layout
+def notifications_page():
+    """通知管理页"""
+    notifications.render()
 
 
 @ui.page("/settings")

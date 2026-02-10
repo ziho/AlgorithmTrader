@@ -7,8 +7,8 @@
 - IBKR: 美股/期权 (待实现)
 """
 
-from .okx import OKXConnector, fetch_ohlcv_simple
 from .binance import BinanceConnector, BinanceDataDownloader
+from .okx import OKXConnector, fetch_ohlcv_simple
 
 __all__ = [
     "OKXConnector",

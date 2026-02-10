@@ -360,13 +360,13 @@ def _render_task_row(task: dict):
 
         # 操作按钮
         if status == "pending":
-            ui.button(icon="play_arrow", on_click=lambda t=task: _start_task(t["id"])).props(
-                "flat dense"
-            )
+            ui.button(
+                icon="play_arrow", on_click=lambda t=task: _start_task(t["id"])
+            ).props("flat dense")
         if status in ("pending", "running"):
-            ui.button(icon="cancel", on_click=lambda t=task: _cancel_task(t["id"])).props(
-                "flat dense color=negative"
-            )
+            ui.button(
+                icon="cancel", on_click=lambda t=task: _cancel_task(t["id"])
+            ).props("flat dense color=negative")
 
 
 def _render_optimization_results():

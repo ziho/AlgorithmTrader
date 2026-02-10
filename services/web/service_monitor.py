@@ -24,6 +24,7 @@ from services.web.utils import candidate_urls
 from src.core.config import get_settings
 from src.ops.heartbeat import is_heartbeat_stale, read_all_heartbeats
 
+
 @dataclass
 class ServiceStatus:
     """服务状态"""
@@ -124,9 +125,11 @@ class ServiceMonitor:
 
                     if response.status_code == 200:
                         data = response.json()
-                        version = data.get('version', 'unknown')
+                        version = data.get("version", "unknown")
                         # 版本号可能已经包含 'v' 前缀
-                        version_str = version if version.startswith('v') else f"v{version}"
+                        version_str = (
+                            version if version.startswith("v") else f"v{version}"
+                        )
                         return ServiceStatus(
                             name="InfluxDB",
                             status="healthy",
@@ -310,8 +313,16 @@ class ServiceMonitor:
 
         try:
             result = subprocess.run(
-                ["docker", "ps", "-a", "--format", "{{.Names}}\t{{.Status}}\t{{.State}}"],
-                capture_output=True, text=True, timeout=5,
+                [
+                    "docker",
+                    "ps",
+                    "-a",
+                    "--format",
+                    "{{.Names}}\t{{.Status}}\t{{.State}}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode != 0:
                 return []
@@ -333,29 +344,42 @@ class ServiceMonitor:
                 if service_name and service_name in service_found:
                     service_found[service_name] = True
                     if state == "running":
-                        statuses.append(ServiceStatus(
-                            name=service_name, status="healthy",
-                            message=self._parse_uptime(status_text),
-                        ))
+                        statuses.append(
+                            ServiceStatus(
+                                name=service_name,
+                                status="healthy",
+                                message=self._parse_uptime(status_text),
+                            )
+                        )
                     elif state == "exited":
-                        statuses.append(ServiceStatus(
-                            name=service_name, status="unhealthy",
-                            message="已停止",
-                        ))
+                        statuses.append(
+                            ServiceStatus(
+                                name=service_name,
+                                status="unhealthy",
+                                message="已停止",
+                            )
+                        )
                     else:
-                        statuses.append(ServiceStatus(
-                            name=service_name, status="unknown",
-                            message=status_text[:30],
-                        ))
+                        statuses.append(
+                            ServiceStatus(
+                                name=service_name,
+                                status="unknown",
+                                message=status_text[:30],
+                            )
+                        )
 
         except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
             return []
 
         for service_name, found in service_found.items():
             if not found:
-                statuses.append(ServiceStatus(
-                    name=service_name, status="unknown", message="服务未部署",
-                ))
+                statuses.append(
+                    ServiceStatus(
+                        name=service_name,
+                        status="unknown",
+                        message="服务未部署",
+                    )
+                )
 
         return statuses
 
@@ -386,21 +410,37 @@ class ServiceMonitor:
                 try:
                     pid = int(pid_file.read_text().strip())
                     os.kill(pid, 0)
-                    statuses.append(ServiceStatus(
-                        name=service_name, status="healthy", message=f"PID {pid}",
-                    ))
+                    statuses.append(
+                        ServiceStatus(
+                            name=service_name,
+                            status="healthy",
+                            message=f"PID {pid}",
+                        )
+                    )
                 except (ProcessLookupError, ValueError):
-                    statuses.append(ServiceStatus(
-                        name=service_name, status="unhealthy", message="进程不存在",
-                    ))
+                    statuses.append(
+                        ServiceStatus(
+                            name=service_name,
+                            status="unhealthy",
+                            message="进程不存在",
+                        )
+                    )
                 except PermissionError:
-                    statuses.append(ServiceStatus(
-                        name=service_name, status="healthy", message="运行中",
-                    ))
+                    statuses.append(
+                        ServiceStatus(
+                            name=service_name,
+                            status="healthy",
+                            message="运行中",
+                        )
+                    )
             else:
-                statuses.append(ServiceStatus(
-                    name=service_name, status="unknown", message="服务未启用",
-                ))
+                statuses.append(
+                    ServiceStatus(
+                        name=service_name,
+                        status="unknown",
+                        message="服务未启用",
+                    )
+                )
 
         return statuses
 

@@ -174,13 +174,17 @@ class AppState:
                                 id=bt_data.get("id", "unknown"),
                                 strategy_name=bt_data.get("strategy_name", "unknown"),
                                 start_date=datetime.fromisoformat(
-                                    bt_data.get("start_date", datetime.now().isoformat())
+                                    bt_data.get(
+                                        "start_date", datetime.now().isoformat()
+                                    )
                                 ),
                                 end_date=datetime.fromisoformat(
                                     bt_data.get("end_date", datetime.now().isoformat())
                                 ),
                                 created_at=datetime.fromisoformat(
-                                    bt_data.get("created_at", datetime.now().isoformat())
+                                    bt_data.get(
+                                        "created_at", datetime.now().isoformat()
+                                    )
                                 ),
                                 status=bt_data.get("status", "completed"),
                                 total_return=bt_data.get("total_return"),
@@ -210,26 +214,53 @@ class AppState:
                                     self._backtests.append(
                                         BacktestInfo(
                                             id=run_id,
-                                            strategy_name=summary.get("strategy_name", "unknown"),
+                                            strategy_name=summary.get(
+                                                "strategy_name", "unknown"
+                                            ),
                                             start_date=datetime.fromisoformat(
-                                                summary.get("start_date", datetime.now().isoformat())
-                                            ) if summary.get("start_date") else datetime.now(),
+                                                summary.get(
+                                                    "start_date",
+                                                    datetime.now().isoformat(),
+                                                )
+                                            )
+                                            if summary.get("start_date")
+                                            else datetime.now(),
                                             end_date=datetime.fromisoformat(
-                                                summary.get("end_date", datetime.now().isoformat())
-                                            ) if summary.get("end_date") else datetime.now(),
+                                                summary.get(
+                                                    "end_date",
+                                                    datetime.now().isoformat(),
+                                                )
+                                            )
+                                            if summary.get("end_date")
+                                            else datetime.now(),
                                             created_at=datetime.fromisoformat(
-                                                summary.get("run_timestamp", datetime.now().isoformat())
+                                                summary.get(
+                                                    "run_timestamp",
+                                                    datetime.now().isoformat(),
+                                                )
                                             ),
                                             status="completed",
                                             total_return=summary.get("total_return"),
-                                            sharpe_ratio=summary.get("metrics", {}).get("sharpe_ratio"),
-                                            max_drawdown=summary.get("metrics", {}).get("max_drawdown"),
-                                            win_rate=summary.get("metrics", {}).get("trade_stats", {}).get("win_rate"),
-                                            total_trades=summary.get("metrics", {}).get("trade_stats", {}).get("total_trades"),
+                                            sharpe_ratio=summary.get("metrics", {}).get(
+                                                "sharpe_ratio"
+                                            ),
+                                            max_drawdown=summary.get("metrics", {}).get(
+                                                "max_drawdown"
+                                            ),
+                                            win_rate=summary.get("metrics", {})
+                                            .get("trade_stats", {})
+                                            .get("win_rate"),
+                                            total_trades=summary.get("metrics", {})
+                                            .get("trade_stats", {})
+                                            .get("total_trades"),
                                         )
                                     )
                         except Exception as e:
-                            logger.warning("load_report_failed", path=str(summary_file), error=str(e))
+                            logger.warning(
+                                "load_report_failed",
+                                path=str(summary_file),
+                                error=str(e),
+                            )
 
     async def _background_update(self):
         """后台状态更新"""
@@ -271,7 +302,14 @@ class AppState:
         for service_name in ["collector", "trader", "scheduler"]:
             try:
                 result = subprocess.run(
-                    ["docker", "ps", "--filter", f"name=algorithmtrader-{service_name}", "--format", "{{.Status}}"],
+                    [
+                        "docker",
+                        "ps",
+                        "--filter",
+                        f"name=algorithmtrader-{service_name}",
+                        "--format",
+                        "{{.Status}}",
+                    ],
                     capture_output=True,
                     text=True,
                     timeout=5,

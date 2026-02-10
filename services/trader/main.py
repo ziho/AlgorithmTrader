@@ -30,9 +30,9 @@ from src.data.storage.parquet_store import ParquetStore
 from src.execution.adapters.okx_spot import OKXSpotBroker
 from src.execution.broker_base import BrokerBase, Position
 from src.execution.order_manager import OrderManager
+from src.ops.heartbeat import HeartbeatWriter
 from src.ops.logging import configure_logging
 from src.ops.notify import get_notifier
-from src.ops.heartbeat import HeartbeatWriter
 from src.ops.scheduler import TradingScheduler
 from src.risk.engine import RiskContext, RiskEngine, create_default_risk_engine
 from src.strategy.base import StrategyBase

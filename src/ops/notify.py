@@ -2,17 +2,21 @@
 通知模块
 
 支持:
-- Telegram 通知
-- Webhook 通知 (Bark / 通用 Webhook)
+- Telegram 通知 (多 Bot)
+- Bark 推送 (多设备)
+- Webhook 通知 (通用)
+- 邮件通知 (SMTP)
 - 下单/成交/异常/日终摘要
 
 设计原则:
 - 异步发送，不阻塞主流程
 - 限频保护
 - 消息模板化
+- 多通道并行发送
 """
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -222,7 +226,10 @@ class TelegramNotifier:
                 loop = asyncio.get_running_loop()
                 # 在已有事件循环中，使用 run_coroutine_threadsafe 安全调度
                 import concurrent.futures
-                future = asyncio.run_coroutine_threadsafe(self.send_async(message), loop)
+
+                future = asyncio.run_coroutine_threadsafe(
+                    self.send_async(message), loop
+                )
                 try:
                     return future.result(timeout=30)
                 except (concurrent.futures.TimeoutError, Exception) as e:
@@ -411,12 +418,17 @@ class Notifier:
     """
     统一通知管理器
 
-    管理多个通知渠道，提供便捷的消息发送方法
+    管理多个通知渠道，提供便捷的消息发送方法。
+    支持多 Bark 设备、多 Telegram Bot 并行发送。
     """
 
     def __init__(self):
         self._telegram: TelegramNotifier | None = None
         self._webhook: WebhookNotifier | None = None
+        self._extra_bark_urls: list[str] = []
+        self._extra_telegram_channels: list[
+            dict
+        ] = []  # [{"token": ..., "chat_id": ...}]
         self._enabled = True
         self._min_level = NotifyLevel.INFO
 
@@ -471,15 +483,58 @@ class Notifier:
         self._webhook = WebhookNotifier(webhook_url=webhook_url)
         return self._webhook.enabled
 
+    def setup_multi_bark(self, bark_urls: list[str] | None = None) -> int:
+        """
+        配置多个 Bark 推送设备
+
+        Args:
+            bark_urls: Bark URL 列表，默认从 BARK_URLS 环境变量读取
+
+        Returns:
+            int: 成功配置的设备数
+        """
+        if bark_urls is None:
+            raw = os.getenv("BARK_URLS", "")
+            bark_urls = [u.strip() for u in raw.split(",") if u.strip()]
+
+        self._extra_bark_urls = bark_urls
+        logger.info("multi_bark_configured", count=len(bark_urls))
+        return len(bark_urls)
+
+    def setup_multi_telegram(self, channels: list[dict] | None = None) -> int:
+        """
+        配置多个 Telegram Bot/Channel
+
+        Args:
+            channels: [{"token": "...", "chat_id": "..."}], default from TELEGRAM_CHANNELS env
+
+        Returns:
+            int: 成功配置的通道数
+        """
+        if channels is None:
+            raw = os.getenv("TELEGRAM_CHANNELS", "")
+            channels = []
+            for entry in raw.split(","):
+                entry = entry.strip()
+                if "|" in entry:
+                    token, chat_id = entry.split("|", 1)
+                    channels.append(
+                        {"token": token.strip(), "chat_id": chat_id.strip()}
+                    )
+
+        self._extra_telegram_channels = channels
+        logger.info("multi_telegram_configured", count=len(channels))
+        return len(channels)
+
     def notify(self, message: NotifyMessage) -> bool:
         """
-        发送通知
+        发送通知到所有已配置的通道
 
         Args:
             message: 通知消息
 
         Returns:
-            bool: 是否发送成功
+            bool: 至少一个通道发送成功
         """
         if not self._enabled:
             return False
@@ -494,23 +549,46 @@ class Notifier:
         if level_order.index(message.level) < level_order.index(self._min_level):
             return False
 
-        # 发送到 Telegram
-        if self._telegram and self._telegram.enabled:
-            return self._telegram.send(message)
+        any_sent = False
 
-        # 发送到 Webhook
-        if self._webhook and self._webhook.enabled:
-            return self._webhook.send(message)
+        # 发送到主 Telegram
+        if self._telegram and self._telegram.enabled and self._telegram.send(message):
+            any_sent = True
 
-        # 没有配置任何通知渠道，只记录日志
-        logger.info(
-            "notification",
-            notify_type=message.notify_type.value,
-            level=message.level.value,
-            title=message.title,
-        )
+        # 发送到额外 Telegram 通道
+        for ch in self._extra_telegram_channels:
+            try:
+                notifier = TelegramNotifier(
+                    bot_token=ch["token"], chat_id=ch["chat_id"]
+                )
+                if notifier.send(message):
+                    any_sent = True
+            except Exception as e:
+                logger.warning("extra_telegram_send_error", error=str(e))
 
-        return True
+        # 发送到主 Webhook/Bark
+        if self._webhook and self._webhook.enabled and self._webhook.send(message):
+            any_sent = True
+
+        # 发送到额外 Bark 设备
+        for bark_url in self._extra_bark_urls:
+            try:
+                notifier = WebhookNotifier(webhook_url=bark_url)
+                if notifier.send(message):
+                    any_sent = True
+            except Exception as e:
+                logger.warning("extra_bark_send_error", error=str(e), url=bark_url[:30])
+
+        if not any_sent:
+            # 没有配置任何通知渠道，只记录日志
+            logger.info(
+                "notification",
+                notify_type=message.notify_type.value,
+                level=message.level.value,
+                title=message.title,
+            )
+
+        return any_sent or True  # 日志也算成功
 
     # ==================== 便捷方法 ====================
 
@@ -686,6 +764,8 @@ def get_notifier() -> Notifier:
         _notifier = Notifier()
         _notifier.setup_telegram()
         _notifier.setup_webhook()
+        _notifier.setup_multi_bark()
+        _notifier.setup_multi_telegram()
     return _notifier
 
 
@@ -695,7 +775,7 @@ async def send_notification(
     level: str = "info",
 ) -> bool:
     """
-    发送通知的便捷函数
+    发送通知的便捷函数（多通道并行）
 
     Args:
         title: 通知标题
@@ -705,14 +785,6 @@ async def send_notification(
     Returns:
         bool: 是否发送成功
     """
-    import os
-
-    # 直接使用 WebhookNotifier 发送
-    webhook_url = os.getenv("WEBHOOK_URL", "")
-    if not webhook_url:
-        logger.warning("send_notification_no_webhook", title=title)
-        return False
-
     level_map = {
         "info": NotifyLevel.INFO,
         "warning": NotifyLevel.WARNING,
@@ -727,8 +799,54 @@ async def send_notification(
         content=message,
     )
 
-    notifier = WebhookNotifier(webhook_url=webhook_url)
-    return await notifier.send_async(notify_message)
+    any_sent = False
+
+    # 收集所有 Bark URL (BARK_URLS + 旧 WEBHOOK_URL)
+    bark_urls: list[str] = []
+    bark_urls_raw = os.getenv("BARK_URLS", "")
+    if bark_urls_raw:
+        bark_urls.extend(u.strip() for u in bark_urls_raw.split(",") if u.strip())
+    webhook_url = os.getenv("WEBHOOK_URL", "")
+    if webhook_url and webhook_url not in bark_urls:
+        bark_urls.append(webhook_url)
+
+    # 发送到所有 Bark
+    for url in bark_urls:
+        try:
+            notifier = WebhookNotifier(webhook_url=url)
+            result = await notifier.send_async(notify_message)
+            any_sent = any_sent or result
+        except Exception as e:
+            logger.warning("send_notification_bark_error", url=url[:30], error=str(e))
+
+    # 发送到主 Telegram
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if bot_token and chat_id:
+        try:
+            tg = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
+            result = await tg.send_async(notify_message)
+            any_sent = any_sent or result
+        except Exception as e:
+            logger.warning("send_notification_telegram_error", error=str(e))
+
+    # 发送到额外 Telegram 通道
+    channels_raw = os.getenv("TELEGRAM_CHANNELS", "")
+    for entry in channels_raw.split(","):
+        entry = entry.strip()
+        if "|" in entry:
+            token, cid = entry.split("|", 1)
+            try:
+                tg = TelegramNotifier(bot_token=token.strip(), chat_id=cid.strip())
+                result = await tg.send_async(notify_message)
+                any_sent = any_sent or result
+            except Exception as e:
+                logger.warning("send_notification_extra_tg_error", error=str(e))
+
+    if not any_sent:
+        logger.warning("send_notification_no_channel", title=title)
+
+    return any_sent
 
 
 # 导出

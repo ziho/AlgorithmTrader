@@ -281,9 +281,9 @@ class BacktestResult:
                 if trading_days > 0:
                     years = trading_days / 252
                     if years > 0:
-                        summary.annualized_return = (
-                            (1 + summary.total_return) ** (1 / years) - 1
-                        )
+                        summary.annualized_return = (1 + summary.total_return) ** (
+                            1 / years
+                        ) - 1
 
                 # 波动率和夏普比率
                 if len(returns) > 1:
@@ -306,7 +306,9 @@ class BacktestResult:
 
                 # 卡尔玛比率
                 if summary.max_drawdown > 0:
-                    summary.calmar_ratio = summary.annualized_return / summary.max_drawdown
+                    summary.calmar_ratio = (
+                        summary.annualized_return / summary.max_drawdown
+                    )
 
         # 从交易记录计算胜率
         if self.trades:

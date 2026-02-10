@@ -157,7 +157,6 @@ LOG_DIR_MAX_SIZE_MB = 200
 
 def get_log_dir_size_mb() -> float:
     """获取日志目录总大小 (MB)"""
-    from pathlib import Path
     settings = get_settings()
     log_dir = settings.log_dir
     if not log_dir.exists():
@@ -177,7 +176,6 @@ def cleanup_old_logs(max_size_mb: float = LOG_DIR_MAX_SIZE_MB) -> dict:
     Returns:
         清理报告 dict
     """
-    from pathlib import Path
 
     settings = get_settings()
     log_dir = settings.log_dir

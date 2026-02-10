@@ -22,35 +22,37 @@ class Environment(str, Enum):
 class BinanceSettings(BaseSettings):
     """Binance 交易所配置"""
 
-    model_config = SettingsConfigDict(env_prefix="BINANCE_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="BINANCE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     api_key: SecretStr = Field(default=SecretStr(""), description="Binance API Key")
-    api_secret: SecretStr = Field(default=SecretStr(""), description="Binance API Secret")
+    api_secret: SecretStr = Field(
+        default=SecretStr(""), description="Binance API Secret"
+    )
     testnet: bool = Field(default=False, description="是否使用测试网")
-    
+
     # 数据下载配置
     download_symbols: str = Field(
         default="BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,DOGEUSDT",
-        description="默认下载的交易对列表，逗号分隔"
+        description="默认下载的交易对列表，逗号分隔",
     )
     download_timeframes: str = Field(
-        default="1m",
-        description="默认下载的时间框架列表，逗号分隔"
+        default="1m", description="默认下载的时间框架列表，逗号分隔"
     )
-    request_delay: float = Field(
-        default=0.2,
-        description="API 请求间隔秒数"
-    )
-    max_retries: int = Field(
-        default=5,
-        description="下载失败最大重试次数"
-    )
+    request_delay: float = Field(default=0.2, description="API 请求间隔秒数")
+    max_retries: int = Field(default=5, description="下载失败最大重试次数")
 
 
 class OKXSettings(BaseSettings):
     """OKX 交易所配置"""
 
-    model_config = SettingsConfigDict(env_prefix="OKX_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="OKX_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     api_key: SecretStr = Field(default=SecretStr(""), description="OKX API Key")
     api_secret: SecretStr = Field(default=SecretStr(""), description="OKX API Secret")
@@ -71,7 +73,12 @@ class IBKRSettings(BaseSettings):
 class InfluxDBSettings(BaseSettings):
     """InfluxDB 配置"""
 
-    model_config = SettingsConfigDict(env_prefix="INFLUXDB_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="INFLUXDB_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     url: str = Field(default="http://localhost:8086", description="InfluxDB URL")
     token: SecretStr = Field(default=SecretStr(""), description="InfluxDB Token")
@@ -82,21 +89,62 @@ class InfluxDBSettings(BaseSettings):
 class TelegramSettings(BaseSettings):
     """Telegram 通知配置"""
 
-    model_config = SettingsConfigDict(env_prefix="TELEGRAM_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="TELEGRAM_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     bot_token: SecretStr = Field(default=SecretStr(""), description="Bot Token")
     chat_id: str = Field(default="", description="Chat ID")
+    channels: str = Field(
+        default="",
+        description="多 Bot 配置 (token1|chatid1,token2|chatid2)",
+    )
 
     @property
     def enabled(self) -> bool:
-        """检查 Telegram 是否已配置"""
-        return bool(self.bot_token.get_secret_value() and self.chat_id)
+        """检查 Telegram 是否已配置（主 Bot 或多 Bot 任一配置即可）"""
+        return bool(
+            (self.bot_token.get_secret_value() and self.chat_id) or self.channels
+        )
+
+
+class BarkSettings(BaseSettings):
+    """Bark 推送配置 (支持多设备)"""
+
+    model_config = SettingsConfigDict(
+        env_prefix="BARK_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    urls: str = Field(default="", description="Bark 推送 URL 列表 (逗号分隔)")
+
+    @property
+    def enabled(self) -> bool:
+        """检查 Bark 是否已配置"""
+        return bool(self.urls)
+
+    @property
+    def url_list(self) -> list[str]:
+        """解析为 URL 列表"""
+        if not self.urls:
+            return []
+        return [u.strip() for u in self.urls.split(",") if u.strip()]
 
 
 class WebhookSettings(BaseSettings):
-    """Webhook 通知配置"""
+    """Webhook 通知配置 (保留向后兼容)"""
 
-    model_config = SettingsConfigDict(env_prefix="WEBHOOK_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="WEBHOOK_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     url: str = Field(default="", description="Webhook URL (支持 Bark 或通用 Webhook)")
 
@@ -104,6 +152,30 @@ class WebhookSettings(BaseSettings):
     def enabled(self) -> bool:
         """检查 Webhook 是否已配置"""
         return bool(self.url)
+
+
+class SmtpSettings(BaseSettings):
+    """SMTP 邮件通知配置"""
+
+    model_config = SettingsConfigDict(
+        env_prefix="SMTP_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    host: str = Field(default="", description="SMTP 服务器地址")
+    port: int = Field(default=587, description="SMTP 端口")
+    user: str = Field(default="", description="SMTP 用户名")
+    password: SecretStr = Field(default=SecretStr(""), description="SMTP 密码")
+    from_addr: str = Field(default="", alias="from", description="发件人地址")
+    to: str = Field(default="", description="收件人列表 (逗号分隔)")
+    use_tls: bool = Field(default=True, description="是否使用 TLS")
+
+    @property
+    def enabled(self) -> bool:
+        """检查邮件是否已配置"""
+        return bool(self.host and self.user)
 
 
 class Settings(BaseSettings):
@@ -137,7 +209,9 @@ class Settings(BaseSettings):
     ibkr: IBKRSettings = Field(default_factory=IBKRSettings)
     influxdb: InfluxDBSettings = Field(default_factory=InfluxDBSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    bark: BarkSettings = Field(default_factory=BarkSettings)
     webhook: WebhookSettings = Field(default_factory=WebhookSettings)
+    smtp: SmtpSettings = Field(default_factory=SmtpSettings)
 
     @property
     def is_prod(self) -> bool:

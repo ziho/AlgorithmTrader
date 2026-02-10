@@ -14,8 +14,8 @@
 """
 
 from .history import HistoryFetcher
-from .realtime import RealtimeSyncer
 from .manager import DataManager, get_history
+from .realtime import RealtimeSyncer
 
 __all__ = [
     "HistoryFetcher",

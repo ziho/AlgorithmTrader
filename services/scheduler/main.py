@@ -22,9 +22,9 @@ import structlog
 
 from src.core.config import get_settings
 from src.ops.healthcheck import check_influxdb_health
+from src.ops.heartbeat import HeartbeatWriter
 from src.ops.logging import configure_logging
 from src.ops.notify import get_notifier
-from src.ops.heartbeat import HeartbeatWriter
 from src.ops.scheduler import (
     ScheduledTask,
     TaskResult,

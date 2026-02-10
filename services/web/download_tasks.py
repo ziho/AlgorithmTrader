@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 from uuid import uuid4
 
 from src.data.fetcher.history import HistoryFetcher
@@ -19,7 +18,7 @@ from src.ops.logging import get_logger
 logger = get_logger(__name__)
 
 
-def format_eta(seconds: Optional[int]) -> str:
+def format_eta(seconds: int | None) -> str:
     """格式化 ETA 文本"""
     if seconds is None or seconds < 0:
         return "-"
@@ -160,9 +159,16 @@ class DownloadTaskManager:
                         task.current_symbol = sym
                         task.message = f"下载中: {sym}"
                         symbol_total = pending_map.get(sym, 0)
+                        base_completed = completed_units
 
-                        def on_progress(completed: int, total: int, _stats) -> None:
-                            task.completed_units = completed_units + completed
+                        def on_progress(
+                            completed: int,
+                            total: int,
+                            _stats,
+                            task=task,
+                            base_completed=base_completed,
+                        ) -> None:
+                            task.completed_units = base_completed + completed
                             task.progress = min(
                                 100.0, task.completed_units / task.total_units * 100.0
                             )

@@ -34,24 +34,22 @@ def render():
 
     with ui.row().classes("w-full mt-4"):
         _render_quick_links()
-    
+
     with ui.row().classes("w-full gap-4 mt-4"):
         _render_data_status_overview()
 
     with ui.row().classes("w-full gap-4 mt-4"):
         _render_download_task_overview()
 
-    
     with ui.row().classes("w-full gap-4 mt-4"):
         with ui.column().classes("flex-1 min-w-80"):
             _render_live_trading_status()
         with ui.column().classes("flex-1 min-w-80"):
             _render_backtest_status()
 
-    
     with ui.row().classes("w-full gap-4 mt-4"):
         with ui.column().classes("flex-1 min-w-80"):
-             _render_recent_alerts()
+            _render_recent_alerts()
         with ui.column().classes("flex-1 min-w-80"):
             _render_recent_backtests()
 
@@ -78,7 +76,7 @@ def _render_service_status(container):
                 title=status.name,
                 status=status.status,
                 message=status.message,
-                url=getattr(status, 'url', None),
+                url=getattr(status, "url", None),
             )
 
     # 后台异步获取真实状态
@@ -92,7 +90,7 @@ def _render_service_status(container):
                         title=status.name,
                         status=status.status,
                         message=status.message,
-                        url=getattr(status, 'url', None),
+                        url=getattr(status, "url", None),
                     )
         except Exception:
             pass  # 保持模拟数据
@@ -137,7 +135,11 @@ def _render_data_status_overview():
     with ui.card().classes("card w-full"):
         with ui.row().classes("justify-between items-center mb-4"):
             ui.label("📊 数据采集状态").classes("text-lg font-medium")
-            ui.button("查看详情", icon="arrow_forward", on_click=lambda: ui.navigate.to("/data")).props("flat size=sm")
+            ui.button(
+                "查看详情",
+                icon="arrow_forward",
+                on_click=lambda: ui.navigate.to("/data"),
+            ).props("flat size=sm")
 
         status_container = ui.column().classes("w-full")
 
@@ -158,7 +160,9 @@ def _render_data_status_overview():
                         with ui.row().classes("items-center gap-2"):
                             ui.icon("warning").classes("text-yellow-500")
                             ui.label("暂无数据").classes("text-yellow-600")
-                        ui.link("→ 前往下载历史数据", "/data").classes("text-sm text-blue-500")
+                        ui.link("→ 前往下载历史数据", "/data").classes(
+                            "text-sm text-blue-500"
+                        )
                         return
 
                     # 统计概览
@@ -187,7 +191,9 @@ def _render_data_status_overview():
                         # 数据集数量
                         with ui.column().classes("flex-1 min-w-32"):
                             with ui.row().classes("items-baseline gap-1"):
-                                ui.label(str(total_symbols)).classes("text-2xl font-bold text-blue-600")
+                                ui.label(str(total_symbols)).classes(
+                                    "text-2xl font-bold text-blue-600"
+                                )
                                 ui.label("个交易对").classes("text-sm text-gray-500")
 
                         # 缺口状态
@@ -195,22 +201,30 @@ def _render_data_status_overview():
                             if total_gaps == 0:
                                 with ui.row().classes("items-center gap-1"):
                                     ui.icon("check_circle").classes("text-green-500")
-                                    ui.label("无缺口").classes("text-green-600 font-medium")
+                                    ui.label("无缺口").classes(
+                                        "text-green-600 font-medium"
+                                    )
                             else:
                                 with ui.row().classes("items-center gap-1"):
                                     ui.icon("warning").classes("text-yellow-500")
-                                    ui.label(f"{total_gaps} 个缺口").classes("text-yellow-600 font-medium")
+                                    ui.label(f"{total_gaps} 个缺口").classes(
+                                        "text-yellow-600 font-medium"
+                                    )
 
                         # 数据新鲜度
                         with ui.column().classes("flex-1 min-w-32"):
                             if outdated_count == 0:
                                 with ui.row().classes("items-center gap-1"):
                                     ui.icon("check_circle").classes("text-green-500")
-                                    ui.label("数据最新").classes("text-green-600 font-medium")
+                                    ui.label("数据最新").classes(
+                                        "text-green-600 font-medium"
+                                    )
                             else:
                                 with ui.row().classes("items-center gap-1"):
                                     ui.icon("update").classes("text-yellow-500")
-                                    ui.label(f"{outdated_count} 个落后").classes("text-yellow-600 font-medium")
+                                    ui.label(f"{outdated_count} 个落后").classes(
+                                        "text-yellow-600 font-medium"
+                                    )
 
                         # 最后更新
                         with ui.column().classes("flex-1 min-w-40"):
@@ -291,21 +305,29 @@ def _render_live_trading_status():
             with ui.column().classes("items-center py-4"):
                 ui.icon("pause_circle").classes("text-4xl text-gray-300")
                 ui.label("暂无运行中的策略").classes("text-gray-400 mt-2")
-                ui.link("→ 配置策略", "/strategies").classes("text-sm text-blue-500 mt-1")
+                ui.link("→ 配置策略", "/strategies").classes(
+                    "text-sm text-blue-500 mt-1"
+                )
         else:
             for strategy in enabled_strategies[:3]:  # 最多显示3个
-                with ui.row().classes("w-full items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-700"):
+                with ui.row().classes(
+                    "w-full items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-700"
+                ):
                     ui.icon("play_circle").classes("text-green-500")
                     with ui.column().classes("flex-1"):
                         ui.label(strategy.name).classes("font-medium")
-                        ui.label(f"{strategy.symbol} · {strategy.timeframe}").classes("text-xs text-gray-400")
+                        ui.label(f"{strategy.symbol} · {strategy.timeframe}").classes(
+                            "text-xs text-gray-400"
+                        )
                     # TODO: 从实盘服务获取真实数据
                     with ui.column().classes("items-end"):
                         ui.label("0 笔").classes("text-sm")
                         ui.label("$0.00").classes("text-xs text-gray-400")
 
             if len(enabled_strategies) > 3:
-                ui.link(f"查看全部 {len(enabled_strategies)} 个策略 →", "/strategies").classes("text-sm text-blue-500 mt-2")
+                ui.link(
+                    f"查看全部 {len(enabled_strategies)} 个策略 →", "/strategies"
+                ).classes("text-sm text-blue-500 mt-2")
 
 
 def _render_backtest_status():
@@ -328,14 +350,18 @@ def _render_backtest_status():
             with ui.column().classes("items-center py-4"):
                 ui.icon("hourglass_empty").classes("text-4xl text-gray-300")
                 ui.label("暂无运行中的回测").classes("text-gray-400 mt-2")
-                ui.link("→ 开始新回测", "/backtests").classes("text-sm text-blue-500 mt-1")
+                ui.link("→ 开始新回测", "/backtests").classes(
+                    "text-sm text-blue-500 mt-1"
+                )
         else:
             for bt in running:
                 with ui.row().classes("w-full items-center gap-3 py-2"):
                     ui.spinner(size="sm")
                     with ui.column().classes("flex-1"):
                         ui.label(bt.strategy_class).classes("font-medium")
-                        ui.label(f"{bt.symbol} · {bt.start_date} ~ {bt.end_date}").classes("text-xs text-gray-400")
+                        ui.label(
+                            f"{bt.symbol} · {bt.start_date} ~ {bt.end_date}"
+                        ).classes("text-xs text-gray-400")
 
 
 def _render_recent_alerts():
@@ -346,7 +372,6 @@ def _render_recent_alerts():
 
             async def clear_old_logs():
                 """清理旧的错误日志"""
-                import shutil
                 log_dir = Path(__file__).parent.parent.parent.parent / "logs"
                 if not log_dir.exists():
                     ui.notify("日志目录不存在", type="warning")
@@ -445,31 +470,42 @@ def _load_recent_alerts() -> list[dict]:
                     time_str = _format_log_time(timestamp)
 
                     # 来源 (从 logger 提取简短名)
-                    source = logger_name.split(".")[-1] if logger_name else log_file.stem
+                    source = (
+                        logger_name.split(".")[-1] if logger_name else log_file.stem
+                    )
 
-                    alerts.append({
-                        "level": level,
-                        "message": message[:120],
-                        "time": time_str,
-                        "source": source,
-                    })
+                    alerts.append(
+                        {
+                            "level": level,
+                            "message": message[:120],
+                            "time": time_str,
+                            "source": source,
+                        }
+                    )
 
                 except json.JSONDecodeError:
                     # 非 JSON 格式日志行，使用旧方式解析
                     if "error" in line.lower():
                         import re
+
                         match = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)
                         time_str = match.group(0) if match else "未知时间"
-                        message = line[line.find("]") + 1:].strip() if "]" in line else line[:100]
+                        message = (
+                            line[line.find("]") + 1 :].strip()
+                            if "]" in line
+                            else line[:100]
+                        )
                         dedup_key = message[:50]
                         if dedup_key not in seen_messages:
                             seen_messages.add(dedup_key)
-                            alerts.append({
-                                "level": "error",
-                                "message": message[:120],
-                                "time": time_str,
-                                "source": log_file.stem,
-                            })
+                            alerts.append(
+                                {
+                                    "level": "error",
+                                    "message": message[:120],
+                                    "time": time_str,
+                                    "source": log_file.stem,
+                                }
+                            )
 
         except Exception:
             pass
@@ -480,7 +516,9 @@ def _load_recent_alerts() -> list[dict]:
 def _format_log_time(timestamp: str) -> str:
     """格式化日志时间为相对时间"""
     try:
-        from datetime import UTC, datetime as dt
+        from datetime import UTC
+        from datetime import datetime as dt
+
         ts = dt.fromisoformat(timestamp)
         now = dt.now(UTC)
         diff = now - ts
@@ -638,10 +676,14 @@ def _render_notification_test():
                 masked_url = webhook_url[:30] + "..."
                 ui.label(masked_url).classes("text-gray-500 text-sm font-mono")
             elif webhook_url:
-                ui.label("✅ Webhook 已配置").classes("text-green-600 dark:text-green-400")
+                ui.label("✅ Webhook 已配置").classes(
+                    "text-green-600 dark:text-green-400"
+                )
             else:
                 ui.label("⚠️ 通知未配置").classes("text-yellow-600 dark:text-yellow-400")
-                ui.label("请在 .env 中设置 WEBHOOK_URL").classes("text-gray-500 text-sm")
+                ui.label("请在 .env 中设置 WEBHOOK_URL").classes(
+                    "text-gray-500 text-sm"
+                )
 
         # 测试按钮
         result_label = ui.label("").classes("mt-2")

@@ -84,7 +84,9 @@ class OKXSpotBroker(BrokerBase):
         self._exchange: ccxt.okx | None = None
 
         # API Key 是否已配置
-        self._api_configured = bool(self._api_key and self._api_secret and self._passphrase)
+        self._api_configured = bool(
+            self._api_key and self._api_secret and self._passphrase
+        )
 
         # 限频控制
         self._last_request_time: float = 0

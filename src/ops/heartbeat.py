@@ -10,12 +10,10 @@ Web 服务读取这些文件来判断各服务的运行状态。
 import json
 import os
 import threading
-import time
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
 
 # 心跳文件默认超时(秒)，超过此时间认为服务不健康
 HEARTBEAT_STALE_SECONDS = 180  # 3 分钟
@@ -122,7 +120,9 @@ def read_all_heartbeats() -> dict[str, Heartbeat]:
     return heartbeats
 
 
-def is_heartbeat_stale(hb: Heartbeat, max_age_seconds: float = HEARTBEAT_STALE_SECONDS) -> bool:
+def is_heartbeat_stale(
+    hb: Heartbeat, max_age_seconds: float = HEARTBEAT_STALE_SECONDS
+) -> bool:
     """检查心跳是否过期"""
     try:
         ts = datetime.fromisoformat(hb.timestamp)

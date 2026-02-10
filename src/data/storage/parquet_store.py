@@ -42,7 +42,7 @@ class ParquetStore:
         ]
     )
 
-    def __init__(self, base_path: Path | None = None):
+    def __init__(self, base_path: Path | str | None = None):
         """
         初始化 Parquet Store
 
@@ -50,7 +50,9 @@ class ParquetStore:
             base_path: 数据存储根目录，默认使用配置中的路径
         """
         settings = get_settings()
-        self.base_path = base_path or Path(settings.data_dir) / "parquet"
+        self.base_path = (
+            Path(base_path) if base_path else Path(settings.data_dir) / "parquet"
+        )
         self.base_path.mkdir(parents=True, exist_ok=True)
 
         # DuckDB 内存连接（用于查询）

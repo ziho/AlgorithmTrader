@@ -14,7 +14,7 @@ from typing import Any
 import pandas as pd
 
 from src.backtest.engine import BacktestConfig, BacktestEngine
-from src.backtest.metrics import MetricsCalculator, PerformanceMetrics
+from src.backtest.metrics import PerformanceMetrics
 from src.optimization.methods import GridSearch, ParameterSpace, SearchMethod
 from src.optimization.objectives import MaximizeSharpe, Objective
 from src.strategy.base import StrategyBase as Strategy
