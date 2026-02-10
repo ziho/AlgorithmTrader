@@ -15,7 +15,7 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import structlog
@@ -25,7 +25,7 @@ from src.core.typing import OrderIntent, TargetPosition
 logger = structlog.get_logger(__name__)
 
 
-class RiskAction(str, Enum):
+class RiskAction(StrEnum):
     """风控动作"""
 
     PASS = "pass"  # 通过

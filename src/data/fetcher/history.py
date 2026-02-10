@@ -14,7 +14,7 @@ import gzip
 import hashlib
 import io
 import zipfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -521,7 +521,7 @@ class HistoryFetcher:
         start_date: datetime,
         end_date: datetime,
         skip_existing: bool = True,
-        progress_callback: callable | None = None,
+        progress_callback: Callable | None = None,
     ) -> AsyncIterator[tuple[int, int, pd.DataFrame]]:
         """
         下载日期范围内的数据
@@ -604,7 +604,7 @@ class HistoryFetcher:
         start_date: datetime,
         end_date: datetime,
         skip_existing: bool = True,
-        progress_callback: callable | None = None,
+        progress_callback: Callable | None = None,
     ) -> DownloadStats:
         """
         下载并保存到 Parquet

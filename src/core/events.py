@@ -16,12 +16,12 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     """事件类型枚举"""
 
     BAR = "bar"
@@ -30,21 +30,21 @@ class EventType(str, Enum):
     FILL = "fill"
 
 
-class OrderSide(str, Enum):
+class OrderSide(StrEnum):
     """订单方向"""
 
     BUY = "buy"
     SELL = "sell"
 
 
-class OrderType(str, Enum):
+class OrderType(StrEnum):
     """订单类型"""
 
     MARKET = "market"
     LIMIT = "limit"
 
 
-class OrderStatus(str, Enum):
+class OrderStatus(StrEnum):
     """订单状态"""
 
     NEW = "new"
@@ -55,7 +55,7 @@ class OrderStatus(str, Enum):
     REJECTED = "rejected"
 
 
-class SignalDirection(str, Enum):
+class SignalDirection(StrEnum):
     """信号方向"""
 
     LONG = "long"

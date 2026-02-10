@@ -20,7 +20,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import aiohttp
@@ -31,7 +31,7 @@ from src.core.config import get_settings
 logger = structlog.get_logger(__name__)
 
 
-class NotifyLevel(str, Enum):
+class NotifyLevel(StrEnum):
     """通知级别"""
 
     INFO = "info"
@@ -40,7 +40,7 @@ class NotifyLevel(str, Enum):
     CRITICAL = "critical"
 
 
-class NotifyType(str, Enum):
+class NotifyType(StrEnum):
     """通知类型"""
 
     ORDER = "order"  # 下单通知

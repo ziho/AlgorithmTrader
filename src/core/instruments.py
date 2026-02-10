@@ -10,11 +10,11 @@ Symbol 规范化模块
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import ClassVar
 
 
-class Exchange(str, Enum):
+class Exchange(StrEnum):
     """支持的交易所"""
 
     OKX = "OKX"
@@ -22,7 +22,7 @@ class Exchange(str, Enum):
     IBKR = "IBKR"
 
 
-class AssetType(str, Enum):
+class AssetType(StrEnum):
     """资产类型"""
 
     SPOT = "spot"  # 现货

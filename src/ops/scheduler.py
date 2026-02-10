@@ -13,7 +13,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import structlog
@@ -28,7 +28,7 @@ from src.core.config import get_settings
 logger = structlog.get_logger(__name__)
 
 
-class TaskType(str, Enum):
+class TaskType(StrEnum):
     """任务类型"""
 
     DATA_COLLECT = "data_collect"  # 数据采集

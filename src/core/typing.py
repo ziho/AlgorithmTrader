@@ -7,14 +7,14 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 
-class PositionSide(str, Enum):
+class PositionSide(StrEnum):
     """持仓方向"""
 
     LONG = "long"

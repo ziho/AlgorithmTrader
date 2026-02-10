@@ -12,10 +12,10 @@
 """
 
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 
 
-class Timeframe(str, Enum):
+class Timeframe(StrEnum):
     """时间框架枚举"""
 
     M1 = "1m"  # 1分钟

@@ -13,11 +13,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class SlippageType(str, Enum):
+class SlippageType(StrEnum):
     """滑点类型"""
 
     FIXED = "fixed"  # 固定点数
@@ -25,7 +25,7 @@ class SlippageType(str, Enum):
     VOLUME_IMPACT = "volume_impact"  # 成交量冲击（高级）
 
 
-class OrderSide(str, Enum):
+class OrderSide(StrEnum):
     """订单方向"""
 
     BUY = "buy"

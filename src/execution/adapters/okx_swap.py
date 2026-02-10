@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import ccxt
@@ -39,14 +39,14 @@ from src.execution.broker_base import (
 logger = structlog.get_logger(__name__)
 
 
-class MarginMode(str, Enum):
+class MarginMode(StrEnum):
     """保证金模式"""
 
     CROSS = "cross"  # 全仓
     ISOLATED = "isolated"  # 逐仓
 
 
-class PositionSide(str, Enum):
+class PositionSide(StrEnum):
     """持仓方向 (双向持仓模式)"""
 
     LONG = "long"

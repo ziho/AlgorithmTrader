@@ -12,13 +12,13 @@
 """
 
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Protocol
 
 from src.core.timeframes import Timeframe
 
 
-class ClockMode(str, Enum):
+class ClockMode(StrEnum):
     """时钟模式"""
 
     LIVE = "live"  # 实盘模式，使用真实时间

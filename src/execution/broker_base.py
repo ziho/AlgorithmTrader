@@ -19,14 +19,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
 from src.core.events import OrderEvent, OrderSide, OrderStatus, OrderType
 
 
-class BrokerType(str, Enum):
+class BrokerType(StrEnum):
     """Broker 类型"""
 
     OKX_SPOT = "okx_spot"

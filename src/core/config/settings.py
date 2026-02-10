@@ -4,7 +4,7 @@
 使用 Pydantic Settings 实现类型安全的配置
 """
 
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
@@ -12,7 +12,7 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Environment(str, Enum):
+class Environment(StrEnum):
     """运行环境"""
 
     DEV = "dev"
@@ -168,7 +168,9 @@ class SmtpSettings(BaseSettings):
     port: int = Field(default=587, description="SMTP 端口")
     user: str = Field(default="", description="SMTP 用户名")
     password: SecretStr = Field(default=SecretStr(""), description="SMTP 密码")
-    from_addr: str = Field(default="", alias="from", description="发件人地址")
+    from_addr: str = Field(
+        default="", validation_alias="SMTP_FROM", description="发件人地址"
+    )
     to: str = Field(default="", description="收件人列表 (逗号分隔)")
     use_tls: bool = Field(default=True, description="是否使用 TLS")
 
