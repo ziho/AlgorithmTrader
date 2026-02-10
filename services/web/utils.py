@@ -4,7 +4,43 @@ Web UI 辅助工具
 提供 URL 解析和候选地址扩展等通用方法。
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
 from urllib.parse import urlparse, urlunparse
+
+from nicegui import ui
+
+
+def safe_timer(
+    interval: float,
+    callback: Callable,
+    *,
+    once: bool = False,
+) -> ui.timer:
+    """创建安全的 ``ui.timer``，自动在 parent slot 被销毁时停用。
+
+    NiceGUI 的 ``ui.timer`` 在页面导航后仍继续运行，但其 parent element
+    已被删除，导致大量 ``RuntimeError: The parent slot of the element has
+    been deleted.`` 错误。此包装器在回调出现该异常时自动将 timer 停用。
+    """
+
+    timer_ref: ui.timer | None = None
+
+    def _wrapper():
+        try:
+            result = callback()
+            # 支持 async 回调
+            return result
+        except RuntimeError as exc:
+            if "parent slot" in str(exc) and timer_ref is not None:
+                timer_ref.active = False
+            # 不再向上传播，避免日志洪泛
+        except Exception:
+            pass  # 其它异常由 NiceGUI 内部处理
+
+    timer_ref = ui.timer(interval, _wrapper, once=once)
+    return timer_ref
 
 
 def _with_host(url: str, host: str) -> str:

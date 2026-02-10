@@ -299,31 +299,73 @@ class AppState:
         # 检查其他服务（通过 docker ps 或进程检查）
         import subprocess
 
+        # 先获取所有容器（包括已停止的），用于区分"未部署"和"已停止"
+        all_containers: dict[str, str] = {}
+        try:
+            result = subprocess.run(
+                [
+                    "docker",
+                    "ps",
+                    "-a",
+                    "--filter",
+                    "name=algorithmtrader-",
+                    "--format",
+                    "{{.Names}}\t{{.State}}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.strip().split("\n"):
+                    if not line:
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) >= 2:
+                        all_containers[parts[0]] = parts[1]
+        except Exception:
+            pass
+
         for service_name in ["collector", "trader", "scheduler"]:
             try:
-                result = subprocess.run(
-                    [
-                        "docker",
-                        "ps",
-                        "--filter",
-                        f"name=algorithmtrader-{service_name}",
-                        "--format",
-                        "{{.Status}}",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
+                # 检查容器是否存在（已部署）
+                container_exists = any(
+                    name in all_containers
+                    for name in [
+                        f"algorithmtrader-{service_name}",
+                        f"algorithmtrader-{service_name}-1",
+                        f"algorithmtrader_{service_name}_1",
+                    ]
                 )
-                status_output = result.stdout.strip()
-                if status_output and "Up" in status_output:
-                    self._services[service_name].status = "healthy"
-                    self._services[service_name].message = status_output
-                elif status_output:
-                    self._services[service_name].status = "warning"
-                    self._services[service_name].message = status_output
+
+                if not container_exists:
+                    # 容器从未创建过 → 未部署（不是错误）
+                    self._services[service_name].status = "not_deployed"
+                    self._services[service_name].message = "未部署 (Profile 未激活)"
                 else:
-                    self._services[service_name].status = "stopped"
-                    self._services[service_name].message = "Container not running"
+                    result = subprocess.run(
+                        [
+                            "docker",
+                            "ps",
+                            "--filter",
+                            f"name=algorithmtrader-{service_name}",
+                            "--format",
+                            "{{.Status}}",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    status_output = result.stdout.strip()
+                    if status_output and "Up" in status_output:
+                        self._services[service_name].status = "healthy"
+                        self._services[service_name].message = status_output
+                    elif status_output:
+                        self._services[service_name].status = "warning"
+                        self._services[service_name].message = status_output
+                    else:
+                        self._services[service_name].status = "stopped"
+                        self._services[service_name].message = "容器已停止"
             except subprocess.TimeoutExpired:
                 self._services[service_name].status = "unknown"
                 self._services[service_name].message = "Check timed out"

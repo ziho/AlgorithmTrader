@@ -223,20 +223,12 @@ class TelegramNotifier:
         """
         try:
             try:
-                loop = asyncio.get_running_loop()
-                # 在已有事件循环中，使用 run_coroutine_threadsafe 安全调度
-                import concurrent.futures
-
-                future = asyncio.run_coroutine_threadsafe(
-                    self.send_async(message), loop
-                )
-                try:
-                    return future.result(timeout=30)
-                except (concurrent.futures.TimeoutError, Exception) as e:
-                    logger.warning("telegram_send_schedule_fallback", error=str(e))
-                    # 如果 run_coroutine_threadsafe 失败（同一线程），使用 ensure_future
-                    asyncio.ensure_future(self.send_async(message))
-                    return True
+                asyncio.get_running_loop()
+                # 在已有事件循环中，使用 ensure_future 非阻塞调度
+                # 注意: 不能用 run_coroutine_threadsafe + future.result()
+                # 因为从同一线程调用会死锁（阻塞事件循环等待自身完成）
+                asyncio.ensure_future(self.send_async(message))
+                return True
             except RuntimeError:
                 # 没有事件循环，创建新的
                 return asyncio.run(self.send_async(message))

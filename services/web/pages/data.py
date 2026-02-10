@@ -359,12 +359,35 @@ def _render_task_queue(manager, refresh_stats_fn=None):
         with ui.row().classes("justify-between items-center mb-4"):
             ui.label("📋 下载任务队列").classes("text-lg font-medium")
 
+            # 清除已完成任务按钮
+            async def clear_completed():
+                count = manager.clear_finished()
+                ui.notify(f"已清除 {count} 个已完成任务", type="info")
+
+            ui.button(
+                "清除已完成", icon="delete_sweep", on_click=clear_completed
+            ).props("flat dense size=sm")
+
         tasks_container = ui.column().classes("w-full")
 
+        # 用于跟踪之前的任务状态，仅在变化时才重建 DOM
+        _prev_snapshot: list[tuple] = []
+
         def render_tasks():
+            tasks = manager.list_tasks()
+
+            # 构建快照用于判断是否需要更新
+            snapshot = [
+                (t.id, t.status, round(t.progress, 1), t.current_symbol, t.error)
+                for t in tasks[:10]
+            ]
+            if snapshot == _prev_snapshot:
+                return  # 状态未变，跳过 DOM 重建
+            _prev_snapshot.clear()
+            _prev_snapshot.extend(snapshot)
+
             tasks_container.clear()
             with tasks_container:
-                tasks = manager.list_tasks()
                 if not tasks:
                     with ui.column().classes("items-center py-6"):
                         ui.icon("cloud_download").classes("text-4xl text-gray-300")
@@ -372,7 +395,16 @@ def _render_task_queue(manager, refresh_stats_fn=None):
                     return
 
                 for task in tasks[:10]:
-                    with ui.card().classes("w-full p-3"):
+                    # 根据状态选择卡片边框颜色
+                    border_class = {
+                        "queued": "border-l-4 border-l-gray-300",
+                        "running": "border-l-4 border-l-blue-500",
+                        "completed": "border-l-4 border-l-green-500",
+                        "failed": "border-l-4 border-l-red-500",
+                        "cancelled": "border-l-4 border-l-gray-400",
+                    }.get(task.status, "border-l-4 border-l-gray-300")
+
+                    with ui.card().classes(f"w-full p-3 {border_class}"):
                         with ui.row().classes("justify-between items-center"):
                             with ui.column().classes("gap-0"):
                                 with ui.row().classes("gap-2 items-center"):
@@ -396,56 +428,92 @@ def _render_task_queue(manager, refresh_stats_fn=None):
                                     f"{task.start_date.strftime('%Y-%m-%d')} → {task.end_date.strftime('%Y-%m-%d')}"
                                 ).classes("text-xs text-gray-400 ml-8")
 
+                            # 右侧进度百分比 — 大号醒目
                             with ui.column().classes("items-end gap-0"):
-                                ui.label(f"{task.progress:.0f}%").classes(
-                                    "font-bold text-sm"
+                                pct_color = {
+                                    "completed": "text-green-600",
+                                    "failed": "text-red-600",
+                                    "running": "text-blue-600",
+                                }.get(task.status, "text-gray-500")
+                                ui.label(f"{task.progress:.1f}%").classes(
+                                    f"font-bold text-base {pct_color}"
                                 )
-                                if task.eta_seconds:
+                                if task.eta_seconds and task.status == "running":
                                     ui.label(
                                         f"ETA {format_eta(task.eta_seconds)}"
-                                    ).classes("text-xs text-gray-400")
+                                    ).classes("text-xs text-gray-500")
+                                # 取消按钮（排队中 / 运行中）
+                                if task.status in ("queued", "running"):
+                                    _tid = task.id
 
-                        # 进度条
-                        bar_color = "primary"
-                        if task.status == "completed":
-                            bar_color = "green"
-                        elif task.status == "failed":
-                            bar_color = "red"
-                        elif task.status == "queued":
-                            bar_color = "grey"
+                                    async def _cancel(tid=_tid):
+                                        manager.cancel_task(tid)
+                                        ui.notify("任务取消请求已发送", type="warning")
 
-                        ui.linear_progress(value=task.progress / 100).props(
-                            f"size=6px color={bar_color}"
-                        )
+                                    ui.button(icon="close", on_click=_cancel).props(
+                                        "flat dense round size=xs color=red"
+                                    ).tooltip("取消任务")
 
-                        if task.current_symbol and task.status == "running":
-                            ui.label(f"正在下载: {task.current_symbol}").classes(
-                                "text-xs text-blue-500 mt-1"
+                        # 进度条 — 更粗、更明显的颜色
+                        bar_color = {
+                            "completed": "green",
+                            "failed": "red",
+                            "queued": "grey-5",
+                            "running": "light-blue-7",
+                            "cancelled": "grey-4",
+                        }.get(task.status, "primary")
+
+                        with ui.row().classes("w-full items-center gap-2 mt-1"):
+                            ui.linear_progress(
+                                value=task.progress / 100,
+                                show_value=False,
+                            ).props(
+                                f'size="12px" color="{bar_color}" track-color="grey-3" rounded'
+                            ).classes("flex-1")
+                            # 附带小字百分比
+                            ui.label(f"{task.progress:.0f}%").classes(
+                                "text-xs font-medium text-gray-600 dark:text-gray-300 min-w-[36px] text-right"
                             )
+
+                        # 状态详情
+                        if task.current_symbol and task.status == "running":
+                            with ui.row().classes("gap-1 items-center mt-1"):
+                                ui.spinner("dots", size="xs").classes("text-blue-500")
+                                ui.label(f"正在下载: {task.current_symbol}").classes(
+                                    "text-xs text-blue-600 dark:text-blue-400"
+                                )
 
                         if task.error:
-                            ui.label(f"错误: {task.error}").classes(
-                                "text-xs text-red-500 mt-1"
-                            )
+                            with ui.row().classes(
+                                "gap-1 items-center mt-1 bg-red-50 dark:bg-red-900/20 rounded px-2 py-1"
+                            ):
+                                ui.icon("error_outline").classes("text-red-500 text-sm")
+                                ui.label(f"{task.error}").classes(
+                                    "text-xs text-red-600 dark:text-red-400"
+                                )
 
                         # 完成后显示存储信息
                         if task.status == "completed":
-                            with ui.row().classes("gap-2 items-center mt-1"):
-                                ui.icon("check").classes("text-green-400 text-xs")
+                            with ui.row().classes(
+                                "gap-2 items-center mt-1 bg-green-50 dark:bg-green-900/20 rounded px-2 py-1"
+                            ):
+                                ui.icon("folder").classes("text-green-500 text-sm")
                                 ui.label(
                                     f"已保存到 data/parquet/{task.exchange}/"
-                                ).classes("text-xs text-green-500 font-mono")
+                                ).classes(
+                                    "text-xs text-green-600 dark:text-green-400 font-mono"
+                                )
 
                 # 完成后刷新统计
                 completed_any = any(t.status == "completed" for t in tasks)
                 if completed_any and refresh_stats_fn:
                     pass  # 统计将在下次定时器中更新
 
-        ui.timer(1.5, render_tasks)
+        from services.web.utils import safe_timer
+
+        safe_timer(2.0, render_tasks)
 
 
-# ============================================
-# Tab 2: 实时行情
 # ============================================
 
 
@@ -582,7 +650,9 @@ def _render_market_panel():
             if timer_ref["timer"] is not None:
                 timer_ref["timer"].deactivate()
             interval = int(refresh_interval.value)
-            timer_ref["timer"] = ui.timer(interval, refresh_quotes)
+            from services.web.utils import safe_timer
+
+            timer_ref["timer"] = safe_timer(interval, refresh_quotes)
 
         setup_timer()
         refresh_interval.on("update:model-value", lambda _: setup_timer())
@@ -828,6 +898,12 @@ def _render_local_data_panel():
                 icon="sync",
                 on_click=lambda: _manual_sync_dialog(),
             ).props("outline")
+
+            ui.button(
+                "删除数据集",
+                icon="delete_forever",
+                on_click=lambda: _delete_dataset_dialog(),
+            ).props("outline color=red")
 
     # Parquet 说明
     with ui.card().classes("card w-full mt-4"):
@@ -1446,6 +1522,125 @@ def _manual_sync_dialog():
 
         with ui.row().classes("justify-end gap-2 mt-4"):
             ui.button("同步", on_click=sync).props("color=primary")
+            ui.button("关闭", on_click=dialog.close).props("flat")
+
+    dialog.open()
+
+
+def _delete_dataset_dialog():
+    """删除数据集对话框 — 选择交易所/交易对/周期删除本地 Parquet 数据"""
+    import shutil
+
+    parquet_dir = PROJECT_ROOT / "data" / "parquet"
+
+    # 扫描可删除的数据集
+    datasets: list[dict] = []
+    if parquet_dir.exists():
+        for ex_dir in sorted(parquet_dir.iterdir()):
+            if not ex_dir.is_dir():
+                continue
+            for sym_dir in sorted(ex_dir.iterdir()):
+                if not sym_dir.is_dir():
+                    continue
+                for tf_dir in sorted(sym_dir.iterdir()):
+                    if not tf_dir.is_dir():
+                        continue
+                    pq_files = list(tf_dir.glob("**/*.parquet"))
+                    if not pq_files:
+                        continue
+                    total_size = sum(f.stat().st_size for f in pq_files)
+                    if total_size >= 1024**2:
+                        sz = f"{total_size / 1024**2:.1f} MB"
+                    else:
+                        sz = f"{total_size / 1024:.1f} KB"
+                    datasets.append(
+                        {
+                            "label": f"{ex_dir.name}/{sym_dir.name}/{tf_dir.name}  ({sz})",
+                            "path": str(tf_dir),
+                            "exchange": ex_dir.name,
+                            "symbol": sym_dir.name,
+                            "timeframe": tf_dir.name,
+                        }
+                    )
+
+    with ui.dialog() as dialog, ui.card().classes("min-w-[520px]"):
+        ui.label("🗑️ 删除数据集").classes("text-lg font-medium mb-2")
+        ui.label("选择要删除的本地 Parquet 数据集。删除后不可恢复！").classes(
+            "text-red-500 text-sm mb-4"
+        )
+
+        if not datasets:
+            ui.label("未找到本地数据集。").classes("text-gray-400")
+        else:
+            # 快捷清理按钮
+            exchange_names = sorted({d["exchange"] for d in datasets})
+            if "okx" in exchange_names:
+
+                async def delete_all_okx():
+                    okx_dir = parquet_dir / "okx"
+                    if okx_dir.exists():
+                        shutil.rmtree(okx_dir)
+                        ui.notify("已删除所有 OKX 数据", type="positive")
+                        dialog.close()
+
+                with ui.row().classes(
+                    "gap-2 mb-4 bg-orange-50 dark:bg-orange-900/20 rounded p-3"
+                ):
+                    ui.icon("warning").classes("text-orange-500")
+                    ui.label("检测到 OKX 数据残留").classes(
+                        "text-sm text-orange-700 dark:text-orange-300"
+                    )
+                    ui.button("一键清除全部 OKX 数据", on_click=delete_all_okx).props(
+                        "flat dense color=orange size=sm"
+                    )
+
+            selected = (
+                ui.select(
+                    options={d["path"]: d["label"] for d in datasets},
+                    label="选择数据集",
+                    multiple=True,
+                )
+                .classes("w-full")
+                .props("outlined dense use-chips")
+            )
+
+        result_area = ui.column().classes("w-full mt-4")
+
+        async def do_delete():
+            if not selected.value:
+                ui.notify("请选择要删除的数据集", type="warning")
+                return
+
+            paths = (
+                selected.value if isinstance(selected.value, list) else [selected.value]
+            )
+            deleted = 0
+            for p in paths:
+                try:
+                    target = Path(p)
+                    if target.exists() and target.is_dir():
+                        shutil.rmtree(target)
+                        deleted += 1
+                        # 清理空的父目录
+                        sym_dir = target.parent
+                        if sym_dir.exists() and not any(sym_dir.iterdir()):
+                            sym_dir.rmdir()
+                            ex_dir = sym_dir.parent
+                            if ex_dir.exists() and not any(ex_dir.iterdir()):
+                                ex_dir.rmdir()
+                except Exception as e:
+                    logger.warning("delete_dataset_error", path=p, error=str(e))
+
+            result_area.clear()
+            with result_area:
+                ui.label(f"✅ 已删除 {deleted} 个数据集").classes(
+                    "text-green-600 font-medium"
+                )
+            ui.notify(f"已删除 {deleted} 个数据集", type="positive")
+
+        with ui.row().classes("justify-end gap-2 mt-4"):
+            if datasets:
+                ui.button("删除选中", on_click=do_delete).props("color=red")
             ui.button("关闭", on_click=dialog.close).props("flat")
 
     dialog.open()

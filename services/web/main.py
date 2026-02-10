@@ -13,6 +13,7 @@ Web 管理服务主入口
     python -m services.web.main
 """
 
+import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -38,6 +39,71 @@ logger = get_logger(__name__)
 
 # 应用状态实例
 _app_state: AppState | None = None
+# 嵌入式后台守护进程
+_scheduler_service = None
+_notifier_service = None
+_notifier_task = None
+
+
+async def _start_embedded_scheduler():
+    """启动嵌入式调度器（健康检查 + 清理任务）"""
+    global _scheduler_service
+    try:
+        from services.scheduler.main import SchedulerConfig, SchedulerService
+
+        config = SchedulerConfig(
+            enable_health_check=True,
+            enable_cleanup=True,
+            health_check_interval=120,  # 嵌入式模式降低频率
+            cleanup_interval_hours=24,
+        )
+        _scheduler_service = SchedulerService(config)
+        _scheduler_service.start()
+        logger.info("embedded_scheduler_started")
+    except Exception as e:
+        logger.warning("embedded_scheduler_start_failed", error=str(e))
+
+
+async def _start_embedded_notifier():
+    """启动嵌入式通知服务（消息队列 + 限频）"""
+    global _notifier_service, _notifier_task
+    try:
+        from services.notifier.main import NotifierConfig, NotifierService
+        from src.core.config import get_settings
+
+        settings = get_settings()
+        config = NotifierConfig(
+            telegram_enabled=settings.telegram.enabled,
+        )
+        _notifier_service = NotifierService(config)
+        _notifier_task = asyncio.create_task(_notifier_service.start())
+        logger.info("embedded_notifier_started")
+    except Exception as e:
+        logger.warning("embedded_notifier_start_failed", error=str(e))
+
+
+async def _stop_embedded_daemons():
+    """停止嵌入式守护进程"""
+    global _scheduler_service, _notifier_service, _notifier_task
+    if _scheduler_service and _scheduler_service.state.running:
+        try:
+            _scheduler_service.stop(wait=False)
+            logger.info("embedded_scheduler_stopped")
+        except Exception as e:
+            logger.warning("embedded_scheduler_stop_error", error=str(e))
+
+    if _notifier_service and _notifier_service.state.running:
+        try:
+            _notifier_service.stop()
+            if _notifier_task:
+                _notifier_task.cancel()
+                try:
+                    await _notifier_task
+                except asyncio.CancelledError:
+                    pass
+            logger.info("embedded_notifier_stopped")
+        except Exception as e:
+            logger.warning("embedded_notifier_stop_error", error=str(e))
 
 
 async def _on_startup():
@@ -46,12 +112,47 @@ async def _on_startup():
     logger.info("web_service_starting")
     _app_state = AppState()
     await _app_state.initialize()
+
+    # 检测 scheduler/notifier 是否以独立容器运行，若没有则启动嵌入式守护进程
+    import subprocess
+
+    standalone_running = set()
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            names = result.stdout.strip()
+            for svc in ("scheduler", "notifier"):
+                for prefix in ("algorithmtrader-", "algorithmtrader_"):
+                    if f"{prefix}{svc}" in names:
+                        standalone_running.add(svc)
+    except Exception:
+        pass  # Docker 不可用 → 直接启动嵌入式
+
+    if "scheduler" not in standalone_running:
+        await _start_embedded_scheduler()
+        logger.info("embedded_scheduler_active", reason="no standalone container")
+    else:
+        logger.info("scheduler_external", reason="standalone container detected")
+
+    if "notifier" not in standalone_running:
+        await _start_embedded_notifier()
+        logger.info("embedded_notifier_active", reason="no standalone container")
+    else:
+        logger.info("notifier_external", reason="standalone container detected")
+
     logger.info("web_service_started")
 
 
 async def _on_shutdown():
     """应用关闭时清理"""
     global _app_state
+    # 先停止嵌入式守护进程
+    await _stop_embedded_daemons()
     if _app_state:
         await _app_state.cleanup()
     logger.info("web_service_stopped")
@@ -305,6 +406,9 @@ def main():
         dark=None,  # 跟随系统
         reload=args.reload,
         show=False,  # 不自动打开浏览器
+        reconnect_timeout=60.0,  # WebSocket 断连后 60s 内自动重连
+        # Socket.IO 调优：保持 WebSocket 连接稳定
+        socket_io_js_extra_headers={},
     )
 
 

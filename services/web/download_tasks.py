@@ -61,6 +61,7 @@ class DownloadTaskManager:
         self._tasks: dict[str, DownloadTask] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._worker: asyncio.Task | None = None
+        self._cancel_requested: set[str] = set()  # 待取消的任务 ID
 
     def start(self) -> None:
         if self._worker is None or self._worker.done():
@@ -89,6 +90,33 @@ class DownloadTaskManager:
         await self._queue.put(task_id)
         logger.info("download_task_enqueued", task_id=task_id)
         return task
+
+    def cancel_task(self, task_id: str) -> bool:
+        """取消一个下载任务（排队中立即取消，运行中在下个交易对完成后取消）"""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        if task.status == "queued":
+            task.status = "cancelled"
+            task.message = "已取消"
+            task.finished_at = datetime.now(UTC)
+            return True
+        if task.status == "running":
+            self._cancel_requested.add(task_id)
+            task.message = "正在取消..."
+            return True
+        return False
+
+    def clear_finished(self) -> int:
+        """清除所有已完成/失败/已取消的任务，返回清除数量"""
+        to_remove = [
+            tid
+            for tid, t in self._tasks.items()
+            if t.status in ("completed", "failed", "cancelled")
+        ]
+        for tid in to_remove:
+            del self._tasks[tid]
+        return len(to_remove)
 
     def list_tasks(self) -> list[DownloadTask]:
         return sorted(self._tasks.values(), key=lambda t: t.created_at, reverse=True)
@@ -156,6 +184,15 @@ class DownloadTaskManager:
                     completed_units = 0
 
                     for sym in task.symbols:
+                        # 检查是否请求了取消
+                        if task.id in self._cancel_requested:
+                            self._cancel_requested.discard(task.id)
+                            task.status = "cancelled"
+                            task.message = "已取消（下载中断）"
+                            task.finished_at = datetime.now(UTC)
+                            logger.info("download_task_cancelled", task_id=task_id)
+                            break
+
                         task.current_symbol = sym
                         task.message = f"下载中: {sym}"
                         symbol_total = pending_map.get(sym, 0)
@@ -183,6 +220,9 @@ class DownloadTaskManager:
                             progress_callback=on_progress,
                         )
 
+                        # yield to event loop - 防止下载阻塞 WebSocket 通信
+                        await asyncio.sleep(0)
+
                         # 完成一个交易对后，推进已完成计数
                         completed_units += symbol_total
                         task.completed_units = completed_units
@@ -191,9 +231,10 @@ class DownloadTaskManager:
                         )
                         self._estimate_eta(task)
 
-                    task.status = "completed"
-                    task.progress = 100.0
-                    task.message = "下载完成"
+                    if task.status != "cancelled":
+                        task.status = "completed"
+                        task.progress = 100.0
+                        task.message = "下载完成"
             except Exception as e:
                 task.status = "failed"
                 task.error = str(e)

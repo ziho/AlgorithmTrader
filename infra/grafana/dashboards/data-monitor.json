@@ -1,487 +1,317 @@
 {
-  "annotations": {
-    "list": [
-      {
-        "builtIn": 1,
-        "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
-        },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "target": {
-          "limit": 100,
-          "matchAny": false,
-          "tags": [],
-          "type": "dashboard"
-        },
-        "type": "dashboard"
-      }
-    ]
-  },
-  "description": "AlgorithmTrader 数据监控面板 - 显示 K 线数据采集状态和交易对价格",
+  "annotations": { "list": [] },
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
-  "id": null,
+  "graphTooltip": 1,
   "links": [],
-  "liveNow": false,
   "panels": [
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "influxdb"
-      },
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "📊 BTC/USDT",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
+          "color": { "fixedColor": "#FF9830", "mode": "fixed" },
+          "custom": { "drawStyle": "line", "fillOpacity": 8, "gradientMode": "opacity", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
           "unit": "currencyUSD"
-        },
-        "overrides": []
+        }
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
-      },
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 1 },
       "id": 1,
-      "options": {
-        "legend": {
-          "calcs": ["last", "min", "max"],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "influxdb"
-          },
-          "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"ohlcv\")\n  |> filter(fn: (r) => r[\"symbol\"] == \"BTC/USDT\")\n  |> filter(fn: (r) => r[\"_field\"] == \"close\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"close\")",
-          "refId": "A"
-        }
-      ],
-      "title": "BTC/USDT 价格",
-      "type": "timeseries"
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "min", "max", "mean"] }, "tooltip": { "mode": "single" } },
+      "title": "BTC/USDT 收盘价",
+      "type": "timeseries",
+      "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)", "refId": "A" }]
     },
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "influxdb"
-      },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#FF9830", "value": null }] },
           "unit": "currencyUSD"
-        },
-        "overrides": []
+        }
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 1 },
       "id": 2,
-      "options": {
-        "legend": {
-          "calcs": ["last", "min", "max"],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "influxdb"
-          },
-          "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"ohlcv\")\n  |> filter(fn: (r) => r[\"symbol\"] == \"ETH/USDT\")\n  |> filter(fn: (r) => r[\"_field\"] == \"close\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"close\")",
-          "refId": "A"
-        }
-      ],
-      "title": "ETH/USDT 价格",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "influxdb"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "bars",
-            "fillOpacity": 50,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 8
-      },
-      "id": 3,
-      "options": {
-        "legend": {
-          "calcs": ["sum"],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "influxdb"
-          },
-          "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"ohlcv\")\n  |> filter(fn: (r) => r[\"symbol\"] == \"BTC/USDT\")\n  |> filter(fn: (r) => r[\"_field\"] == \"volume\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"volume\")",
-          "refId": "A"
-        }
-      ],
-      "title": "BTC/USDT 成交量",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "influxdb"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "currencyUSD"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 8
-      },
-      "id": 4,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "10.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "influxdb"
-          },
-          "query": "from(bucket: \"trading\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"ohlcv\")\n  |> filter(fn: (r) => r[\"symbol\"] == \"BTC/USDT\")\n  |> filter(fn: (r) => r[\"_field\"] == \"close\")\n  |> last()",
-          "refId": "A"
-        }
-      ],
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
       "title": "BTC 最新价",
-      "type": "stat"
+      "type": "stat",
+      "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> last()", "refId": "A" }]
     },
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "influxdb"
-      },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 6 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["count"] }, "textMode": "auto" },
+      "title": "BTC 数据点数",
+      "type": "stat",
+      "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> count()\n  |> group()\n  |> sum()", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#3F6ECF", "mode": "fixed" },
+          "custom": { "drawStyle": "bars", "fillOpacity": 50, "gradientMode": "opacity", "lineWidth": 0, "showPoints": "never" },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 11 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "title": "BTC/USDT 成交量",
+      "type": "timeseries",
+      "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"volume\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 3, "lineWidth": 1, "showPoints": "never", "spanNulls": true },
           "unit": "currencyUSD"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 8
-      },
-      "id": 5,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "10.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "influxdb"
-          },
-          "query": "from(bucket: \"trading\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"ohlcv\")\n  |> filter(fn: (r) => r[\"symbol\"] == \"ETH/USDT\")\n  |> filter(fn: (r) => r[\"_field\"] == \"close\")\n  |> last()",
-          "refId": "A"
         }
-      ],
-      "title": "ETH 最新价",
-      "type": "stat"
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "BTC/USDT OHLC",
+      "type": "timeseries",
+      "targets": [
+        { "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"open\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)", "refId": "open" },
+        { "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"high\")\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)", "refId": "high" },
+        { "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"low\")\n  |> aggregateWindow(every: v.windowPeriod, fn: min, createEmpty: false)", "refId": "low" },
+        { "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)", "refId": "close" }
+      ]
     },
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "influxdb"
-      },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 300
-              },
-              {
-                "color": "red",
-                "value": 900
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 12,
-        "x": 12,
-        "y": 12
-      },
-      "id": 6,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "10.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "influxdb"
-          },
-          "query": "import \"date\"\n\nfrom(bucket: \"trading\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"ohlcv\")\n  |> filter(fn: (r) => r[\"_field\"] == \"close\")\n  |> last()\n  |> map(fn: (r) => ({\n    r with\n    _value: int(v: date.sub(from: now(), d: r._time)) / 1000000000\n  }))",
-          "refId": "A"
+          "color": { "fixedColor": "#FF9830", "mode": "fixed" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never", "spanNulls": true },
+          "unit": "currencyUSD"
         }
-      ],
-      "title": "数据延迟 (秒)",
-      "type": "stat"
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "min"] }, "tooltip": { "mode": "single" } },
+      "title": "BTC/USDT 高低价区间",
+      "type": "timeseries",
+      "targets": [
+        { "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"high\")\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)", "refId": "high" },
+        { "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BTC_USDT\" or r.symbol == \"BTCUSDT\" or r.symbol == \"BTC/USDT\")\n  |> filter(fn: (r) => r._field == \"low\")\n  |> aggregateWindow(every: v.windowPeriod, fn: min, createEmpty: false)", "refId": "low" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "id": 200,
+      "title": "📊 ETH/USDT",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#627EEA", "mode": "fixed" },
+          "custom": { "drawStyle": "line", "fillOpacity": 8, "gradientMode": "opacity", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 27 },
+      "id": 21,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "min", "max", "mean"] }, "tooltip": { "mode": "single" } },
+      "title": "ETH/USDT 收盘价",
+      "type": "timeseries",
+      "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"ETH_USDT\" or r.symbol == \"ETHUSDT\" or r.symbol == \"ETH/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#627EEA", "value": null }] },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 27 },
+      "id": 22,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "ETH 最新价",
+      "type": "stat",
+      "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"ETH_USDT\" or r.symbol == \"ETHUSDT\" or r.symbol == \"ETH/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> last()", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 32 },
+      "id": 23,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["count"] }, "textMode": "auto" },
+      "title": "ETH 数据点数",
+      "type": "stat",
+      "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"ETH_USDT\" or r.symbol == \"ETHUSDT\" or r.symbol == \"ETH/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> count()\n  |> group()\n  |> sum()", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#8F3BB8", "mode": "fixed" },
+          "custom": { "drawStyle": "bars", "fillOpacity": 50, "gradientMode": "opacity", "lineWidth": 0, "showPoints": "never" },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 37 },
+      "id": 24,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "title": "ETH/USDT 成交量",
+      "type": "timeseries",
+      "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"ETH_USDT\" or r.symbol == \"ETHUSDT\" or r.symbol == \"ETH/USDT\")\n  |> filter(fn: (r) => r._field == \"volume\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)", "refId": "A" }]
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "id": 300,
+      "title": "📊 SOL/USDT",
+      "type": "row",
+      "panels": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "fieldConfig": { "defaults": { "color": { "fixedColor": "#00D1A0", "mode": "fixed" }, "custom": { "drawStyle": "line", "fillOpacity": 8, "gradientMode": "opacity", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true }, "unit": "currencyUSD" } },
+          "gridPos": { "h": 10, "w": 16, "x": 0, "y": 45 },
+          "id": 31,
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "min", "max"] }, "tooltip": { "mode": "single" } },
+          "title": "SOL/USDT 收盘价",
+          "type": "timeseries",
+          "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"SOL_USDT\" or r.symbol == \"SOLUSDT\" or r.symbol == \"SOL/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)", "refId": "A" }]
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "#00D1A0", "value": null }] }, "unit": "currencyUSD" } },
+          "gridPos": { "h": 10, "w": 8, "x": 16, "y": 45 },
+          "id": 32,
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+          "title": "SOL 最新价",
+          "type": "stat",
+          "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"SOL_USDT\" or r.symbol == \"SOLUSDT\" or r.symbol == \"SOL/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> last()", "refId": "A" }]
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "fieldConfig": { "defaults": { "color": { "fixedColor": "#00D1A080", "mode": "fixed" }, "custom": { "drawStyle": "bars", "fillOpacity": 50, "gradientMode": "opacity", "lineWidth": 0, "showPoints": "never" }, "unit": "short" } },
+          "gridPos": { "h": 7, "w": 24, "x": 0, "y": 55 },
+          "id": 33,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+          "title": "SOL/USDT 成交量",
+          "type": "timeseries",
+          "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"SOL_USDT\" or r.symbol == \"SOLUSDT\" or r.symbol == \"SOL/USDT\")\n  |> filter(fn: (r) => r._field == \"volume\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)", "refId": "A" }]
+        }
+      ]
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+      "id": 400,
+      "title": "📊 BNB / XRP / DOGE",
+      "type": "row",
+      "panels": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "fieldConfig": { "defaults": { "color": { "fixedColor": "#F3BA2F", "mode": "fixed" }, "custom": { "drawStyle": "line", "fillOpacity": 8, "gradientMode": "opacity", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true }, "unit": "currencyUSD" } },
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 46 },
+          "id": 41,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+          "title": "BNB/USDT",
+          "type": "timeseries",
+          "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"BNB_USDT\" or r.symbol == \"BNBUSDT\" or r.symbol == \"BNB/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)", "refId": "A" }]
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "fieldConfig": { "defaults": { "color": { "fixedColor": "#23292F", "mode": "fixed" }, "custom": { "drawStyle": "line", "fillOpacity": 8, "gradientMode": "opacity", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true }, "unit": "currencyUSD" } },
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 46 },
+          "id": 42,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+          "title": "XRP/USDT",
+          "type": "timeseries",
+          "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"XRP_USDT\" or r.symbol == \"XRPUSDT\" or r.symbol == \"XRP/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)", "refId": "A" }]
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "fieldConfig": { "defaults": { "color": { "fixedColor": "#C2A633", "mode": "fixed" }, "custom": { "drawStyle": "line", "fillOpacity": 8, "gradientMode": "opacity", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true }, "unit": "currencyUSD" } },
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 46 },
+          "id": 43,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+          "title": "DOGE/USDT",
+          "type": "timeseries",
+          "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r.symbol == \"DOGE_USDT\" or r.symbol == \"DOGEUSDT\" or r.symbol == \"DOGE/USDT\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)", "refId": "A" }]
+        }
+      ]
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 46 },
+      "id": 500,
+      "title": "📋 数据概览统计",
+      "type": "row",
+      "panels": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
+          "gridPos": { "h": 4, "w": 8, "x": 0, "y": 47 },
+          "id": 51,
+          "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["count"] }, "textMode": "auto" },
+          "title": "OHLCV 总数据点",
+          "type": "stat",
+          "targets": [{ "query": "from(bucket: \"trading\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"ohlcv\")\n  |> filter(fn: (r) => r._field == \"close\")\n  |> count()\n  |> group()\n  |> sum()", "refId": "A" }]
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }, "unit": "short" } },
+          "gridPos": { "h": 4, "w": 8, "x": 8, "y": 47 },
+          "id": 52,
+          "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["count"] }, "textMode": "auto" },
+          "title": "交易对数",
+          "type": "stat",
+          "targets": [{ "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"trading\", tag: \"symbol\", predicate: (r) => r._measurement == \"ohlcv\")\n  |> count()", "refId": "A" }]
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] }, "unit": "short" } },
+          "gridPos": { "h": 4, "w": 8, "x": 16, "y": 47 },
+          "id": 53,
+          "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["count"] }, "textMode": "auto" },
+          "title": "时间框架数",
+          "type": "stat",
+          "targets": [{ "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"trading\", tag: \"timeframe\", predicate: (r) => r._measurement == \"ohlcv\")\n  |> count()", "refId": "A" }]
+        }
+      ]
     }
   ],
-  "refresh": "30s",
-  "schemaVersion": 38,
-  "style": "dark",
-  "tags": ["trading", "ohlcv", "data"],
-  "templating": {
-    "list": []
-  },
-  "time": {
-    "from": "now-6h",
-    "to": "now"
-  },
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": ["trading", "ohlcv", "data", "history"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30d", "to": "now" },
   "timepicker": {},
-  "timezone": "utc",
-  "title": "AlgorithmTrader - 数据监控",
+  "timezone": "browser",
+  "title": "历史数据 - OHLCV 监控",
   "uid": "algorithmtrader-data",
-  "version": 1,
-  "weekStart": ""
+  "version": 2
 }

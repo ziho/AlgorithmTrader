@@ -45,6 +45,7 @@ class ServiceWatchdog:
     - 定期检查 Docker 容器状态
     - 容器不健康时自动 docker compose restart
     - 连续 N 次失败后发送告警通知
+    - 自动检测已部署的服务，跳过未部署的服务（不发告警）
     """
 
     # Docker Compose 项目名 → 容器名映射
@@ -74,6 +75,8 @@ class ServiceWatchdog:
         }
         self._running = False
         self._task: asyncio.Task | None = None
+        # 已部署的服务集合（容器存在过，无论运行/退出）
+        self._deployed_services: set[str] = set()
 
     @property
     def health_status(self) -> dict[str, ServiceHealth]:
@@ -81,11 +84,14 @@ class ServiceWatchdog:
 
     async def start(self) -> None:
         """启动看门狗"""
+        # 先检测哪些服务实际已部署（容器存在过）
+        await self._detect_deployed_services()
         self._running = True
         self._task = asyncio.create_task(self._watch_loop())
         logger.info(
             "watchdog_started",
             services=self.services,
+            deployed=list(self._deployed_services),
             max_failures=self.max_failures,
             interval=self.check_interval,
         )
@@ -105,6 +111,8 @@ class ServiceWatchdog:
         """主监控循环"""
         while self._running:
             try:
+                # 每次循环重新检测已部署服务（用户可能中途启停 profile）
+                await self._detect_deployed_services()
                 await self._check_all()
             except asyncio.CancelledError:
                 break
@@ -113,9 +121,62 @@ class ServiceWatchdog:
 
             await asyncio.sleep(self.check_interval)
 
+    async def _detect_deployed_services(self) -> None:
+        """
+        检测哪些服务实际已部署（容器曾经存在过，包括 running/exited/created）。
+        未部署的服务（从未用 profile 启动过）不会被监控，也不会触发告警。
+        """
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["docker", "ps", "-a", "--format", "{{.Names}}\t{{.State}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return
+
+            all_containers: dict[str, str] = {}
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    all_containers[parts[0]] = parts[1]
+
+            deployed: set[str] = set()
+            for svc in self.services:
+                container_names = [
+                    f"{self.CONTAINER_PREFIX}-{svc}",
+                    f"{self.CONTAINER_PREFIX}-{svc}-1",
+                    f"{self.CONTAINER_PREFIX}_{svc}_1",
+                ]
+                for name in container_names:
+                    if name in all_containers:
+                        deployed.add(svc)
+                        break
+
+            self._deployed_services = deployed
+
+            # 对未部署的服务重置为 "not_deployed" 状态
+            for svc in self.services:
+                if svc not in deployed:
+                    health = self._health[svc]
+                    health.status = "not_deployed"
+                    health.consecutive_failures = 0
+                    health.alerted = False
+
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+            logger.debug("watchdog_detect_deployed_error", error=str(e))
+
     async def _check_all(self) -> None:
-        """检查所有服务"""
+        """检查所有已部署的服务（跳过未部署的服务）"""
         for service_name in self.services:
+            # 跳过未部署的服务 → 不检查、不告警、不重启
+            if service_name not in self._deployed_services:
+                continue
+
             health = self._health[service_name]
             health.last_check = datetime.now(UTC)
 

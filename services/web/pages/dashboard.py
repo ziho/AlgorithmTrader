@@ -259,10 +259,18 @@ def _render_download_task_overview():
         manager = get_download_manager(PROJECT_ROOT / "data")
         tasks_container = ui.column().classes("w-full")
 
+        _prev_snap: list[tuple] = []
+
         def render_tasks():
+            tasks = manager.get_active_tasks()
+            snap = [(t.id, t.status, round(t.progress, 1)) for t in tasks[:3]]
+            if snap == _prev_snap:
+                return
+            _prev_snap.clear()
+            _prev_snap.extend(snap)
+
             tasks_container.clear()
             with tasks_container:
-                tasks = manager.get_active_tasks()
                 if not tasks:
                     ui.label("暂无进行中的任务").classes("text-gray-400")
                     return
@@ -273,18 +281,32 @@ def _render_download_task_overview():
                             ui.label(
                                 f"{task.exchange} · {','.join(task.symbols)} · {task.timeframe}"
                             ).classes("text-sm font-medium")
-                            ui.label(
-                                f"{task.status} | ETA {format_eta(task.eta_seconds)}"
-                            ).classes("text-xs text-gray-400")
+                            status_text = {
+                                "queued": "等待中",
+                                "running": "下载中",
+                            }.get(task.status, task.status)
+                            eta_text = (
+                                f" · ETA {format_eta(task.eta_seconds)}"
+                                if task.eta_seconds
+                                else ""
+                            )
+                            ui.label(f"{status_text}{eta_text}").classes(
+                                "text-xs text-gray-500"
+                            )
                         with ui.column().classes("min-w-40"):
+                            bar_color = (
+                                "light-blue-7" if task.status == "running" else "grey-5"
+                            )
                             ui.linear_progress(value=task.progress / 100).props(
-                                "size=8px"
+                                f'size="10px" color="{bar_color}" track-color="grey-3" rounded'
                             )
                             ui.label(f"{task.progress:.1f}%").classes(
-                                "text-xs text-center text-gray-500"
+                                "text-xs text-center font-medium text-gray-700 dark:text-gray-300 mt-0.5"
                             )
 
-        ui.timer(1.0, render_tasks)
+        from services.web.utils import safe_timer
+
+        safe_timer(2.0, render_tasks)
 
 
 def _render_live_trading_status():

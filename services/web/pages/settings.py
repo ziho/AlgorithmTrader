@@ -525,6 +525,10 @@ def _render_watchdog_settings():
                                         "notification_important",
                                         "text-red-600",
                                     ),
+                                    "not_deployed": (
+                                        "remove_circle_outline",
+                                        "text-gray-300",
+                                    ),
                                     "unknown": ("help", "text-gray-400"),
                                 }
                                 icon, color = status_icons.get(
@@ -532,17 +536,28 @@ def _render_watchdog_settings():
                                 )
                                 ui.icon(icon).classes(f"{color}")
                                 ui.label(svc_name.capitalize()).classes("font-medium")
-
-                            with ui.row().classes("gap-3 text-sm text-gray-500"):
-                                ui.label(f"失败: {health.consecutive_failures}")
-                                ui.label(f"重启: {health.restart_count}")
-                                if health.last_check:
-                                    ui.label(
-                                        f"上次检查: {health.last_check.strftime('%H:%M:%S')}"
+                                if health.status == "not_deployed":
+                                    ui.label("(未部署)").classes(
+                                        "text-xs text-gray-400"
                                     )
 
+                            with ui.row().classes("gap-3 text-sm text-gray-500"):
+                                if health.status == "not_deployed":
+                                    ui.label("服务未启动，不会触发告警").classes(
+                                        "italic"
+                                    )
+                                else:
+                                    ui.label(f"失败: {health.consecutive_failures}")
+                                    ui.label(f"重启: {health.restart_count}")
+                                    if health.last_check:
+                                        ui.label(
+                                            f"上次检查: {health.last_check.strftime('%H:%M:%S')}"
+                                        )
+
         render_status()
-        ui.timer(10.0, render_status)
+        from services.web.utils import safe_timer
+
+        safe_timer(10.0, render_status)
 
     # 配置说明
     with ui.card().classes("card w-full mt-4"):
@@ -552,8 +567,10 @@ def _render_watchdog_settings():
 - **最大容忍失败次数**: 3 次 (达到后发送告警)
 - **自动重启**: 每次检测失败后自动执行 `docker compose restart`
 - **告警通道**: Bark 推送 + Telegram 通知
+- **智能检测**: 自动识别已部署的服务，未通过 Docker Compose Profile 启动的服务不会触发误报告警
 
-> 看门狗在 Web 服务启动时自动激活。如果你不需要自动重启功能，可以在此页面手动停止。
+> 看门狗只监控实际部署运行的容器。如果你只启动了 `--profile web`，
+> 则 collector / trader / scheduler / notifier 不会被监控，也不会发送告警。
         """).classes("text-sm")
 
 
