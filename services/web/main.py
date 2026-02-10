@@ -46,7 +46,6 @@ async def _on_startup():
     logger.info("web_service_starting")
     _app_state = AppState()
     await _app_state.initialize()
-    app.storage.general["app_state"] = _app_state
     logger.info("web_service_started")
 
 
