@@ -62,9 +62,9 @@ def _render_row(
         with ui.element("div").classes("w-16"):
             ui.switch(
                 value=strategy.get("enabled", False),
-                on_change=lambda e, s=strategy: on_toggle(s, e.value)
-                if on_toggle
-                else None,
+                on_change=lambda e, s=strategy: (
+                    on_toggle(s, e.value) if on_toggle else None
+                ),
             ).props("dense")
 
         # 策略名称

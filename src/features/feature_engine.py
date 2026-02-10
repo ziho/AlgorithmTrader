@@ -137,8 +137,9 @@ class FeatureEngine:
         # 历史波动率
         self.register(
             "volatility",
-            lambda df, period=20: df["close"].pct_change().rolling(window=period).std()
-            * np.sqrt(252),
+            lambda df, period=20: (
+                df["close"].pct_change().rolling(window=period).std() * np.sqrt(252)
+            ),
             params={"period": 20},
         )
 
