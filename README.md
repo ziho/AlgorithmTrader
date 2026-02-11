@@ -4,7 +4,12 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-一个现代化的个人量化交易系统，专注于中低频策略研发与自动化执行。
+一个现代化的个人量化交易系统，专注于中低频策略研发、回测与自动化执行。
+
+适用场景：
+- 个人或小团队的量化研究与回测
+- 以 15 分钟到 1 小时级别为主的中低频策略
+- 需要完整数据采集与回测闭环的研发流程
 
 ## 特性
 
@@ -21,7 +26,7 @@
 |------|---------|------|
 | 加密货币 | 现货 / 永续合约 | ✅ 已实现 |
 | 美股 | 正股 / 期权 | 🚧 规划中 |
-| A股 | 正股 / 期权 | 🚧 规划中 |
+| A 股 | 正股 / 期权 | 🚧 规划中 |
 
 **交易所**: OKX（已实现）、IBKR（规划中）
 
@@ -31,7 +36,7 @@
 
 - Python 3.11+
 - Docker & Docker Compose
-- 64GB+ RAM（推荐）
+- 16GB+ RAM（推荐 32GB+）
 
 ### 安装
 
@@ -61,8 +66,8 @@ docker-compose up -d influxdb grafana
 ### 数据采集
 
 ```bash
-# 采集历史数据
-python scripts/demo_collect.py --symbol BTC/USDT --days 90
+# 采集历史数据（默认 15m）
+python scripts/demo_collect.py --symbols BTC/USDT --days 90
 
 # 启动实时采集服务
 docker-compose up -d collector
@@ -123,6 +128,7 @@ AlgorithmTrader/
 ├── docs/                   # 文档
 │   ├── guides/             # 操作指南
 │   ├── tutorials/          # 教程
+│   ├── templates/          # 模板
 │   └── development/        # 开发文档
 │
 └── tests/                  # 测试套件
@@ -179,6 +185,8 @@ trader 服务
 
 ## 开发路线
 
+说明：路线图为方向性描述，实际完成度以 `docs/KNOWN_LIMITATIONS.md` 为准。
+
 ### Phase 1: 核心框架（已完成）
 - [x] 项目结构与配置管理
 - [x] 数据采集与存储
@@ -204,26 +212,25 @@ trader 服务
 - [ ] 异常恢复机制
 
 ### Phase 4: 高级功能（规划中）
-- [ ] OKX 永续合约
 - [ ] Walk-forward 优化
 - [ ] 多策略组合管理
 - [ ] Qlib 框架集成
 
 ### Phase 5: 其他市场（远期）
 - [ ] IBKR 接口（美股）
-- [ ] A股数据对接
+- [ ] A 股数据对接
 - [ ] 期权策略
 
-查看 [GitHub Projects](https://github.com/ziho/AlgorithmTrader/projects) 了解详细进度。
+查看 Issues 了解详细进度。
 
 ## 文档
 
+- [文档入口](docs/README.md) - 统一导航入口
 - [用户指南](docs/guides/user_guide.md) - 系统使用完整指南
 - [策略开发](docs/guides/strategy_development.md) - 如何编写自定义策略
 - [部署指南](docs/guides/deployment.md) - 生产环境部署
-- [API 参考](docs/api/README.md) - 核心 API 文档
 - [架构设计](docs/development/architecture.md) - 系统架构详解
-- [**功能完成度**](docs/KNOWN_LIMITATIONS.md) - 各模块状态与已知限制
+- [功能完成度](docs/KNOWN_LIMITATIONS.md) - 各模块状态与已知限制
 
 ## 快速验证
 
@@ -247,7 +254,7 @@ config = WalkForwardConfig(train_period_days=180, test_period_days=30, n_splits=
 validator = WalkForwardValidator(config)
 result = validator.run(
     strategy_class=MyStrategy,
-    data={"BTC-USDT": your_dataframe},  # DataFrame 需含 timestamp/open/high/low/close/volume
+    data={"BTC/USDT": your_dataframe},  # DataFrame 需含 timestamp/open/high/low/close/volume
     param_space={"fast": {"min": 5, "max": 20, "step": 5}},
     objective=MaximizeSharpe(),
     search_method=GridSearch(),
@@ -293,4 +300,4 @@ MIT License - 详见 [LICENSE](LICENSE)
 
 ---
 
-**注意**: 本系统设计用于中低频交易（15分钟至1小时级别），不适合高频交易场景。
+**注意**: 本系统设计用于中低频交易（15 分钟至 1 小时级别），不适合高频交易场景。
