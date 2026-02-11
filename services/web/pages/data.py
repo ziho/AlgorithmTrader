@@ -511,7 +511,7 @@ def _render_task_queue(manager, refresh_stats_fn=None):
 
         from services.web.utils import safe_timer
 
-        safe_timer(2.0, render_tasks)
+        safe_timer(5.0, render_tasks)
 
 
 # ============================================
@@ -641,7 +641,8 @@ def _render_market_panel():
                     ui.label(f"⚠️ 获取行情失败: {e}").classes("text-yellow-600 py-4")
 
         # 初次加载
-        ui.timer(0.3, refresh_quotes, once=True)
+        from services.web.utils import safe_timer as _safe_timer
+        _safe_timer(0.3, refresh_quotes, once=True)
 
         # 定时刷新 — 动态间隔
         timer_ref = {"timer": None}
@@ -880,7 +881,8 @@ def _render_local_data_panel():
                     ).classes("w-full").props("dense flat bordered")
 
         refresh_btn.on_click(load_datasets)
-        ui.timer(0.5, load_datasets, once=True)
+        from services.web.utils import safe_timer as _safe_timer2
+        _safe_timer2(0.5, load_datasets, once=True)
 
     # 数据操作
     with ui.card().classes("card w-full mt-4"):

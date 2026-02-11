@@ -52,9 +52,9 @@ async def _start_embedded_scheduler():
         from services.scheduler.main import SchedulerConfig, SchedulerService
 
         config = SchedulerConfig(
-            enable_health_check=True,
+            enable_health_check=False,  # Web 层 state.py 已检查，避免重复
             enable_cleanup=True,
-            health_check_interval=120,  # 嵌入式模式降低频率
+            health_check_interval=300,  # 若启用，5 分钟一次
             cleanup_interval_hours=24,
         )
         _scheduler_service = SchedulerService(config)
@@ -118,11 +118,14 @@ async def _on_startup():
 
     standalone_running = set()
     try:
-        result = subprocess.run(
-            ["docker", "ps", "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(
+                ["docker", "ps", "--format", "{{.Names}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ),
         )
         if result.returncode == 0:
             names = result.stdout.strip()
@@ -153,6 +156,32 @@ async def _on_shutdown():
     global _app_state
     # 先停止嵌入式守护进程
     await _stop_embedded_daemons()
+
+    # 停止下载任务管理器
+    try:
+        from services.web.download_tasks import _MANAGER
+
+        if _MANAGER and _MANAGER._worker and not _MANAGER._worker.done():
+            _MANAGER._worker.cancel()
+            try:
+                await _MANAGER._worker
+            except asyncio.CancelledError:
+                pass
+            logger.info("download_manager_stopped")
+    except Exception as e:
+        logger.warning("download_manager_stop_error", error=str(e))
+
+    # 停止看门狗
+    try:
+        from src.ops.watchdog import get_watchdog
+
+        wd = get_watchdog()
+        if wd._running:
+            await wd.stop()
+            logger.info("watchdog_stopped_on_shutdown")
+    except Exception as e:
+        logger.warning("watchdog_stop_error", error=str(e))
+
     if _app_state:
         await _app_state.cleanup()
     logger.info("web_service_stopped")
@@ -406,7 +435,7 @@ def main():
         dark=None,  # 跟随系统
         reload=args.reload,
         show=False,  # 不自动打开浏览器
-        reconnect_timeout=60.0,  # WebSocket 断连后 60s 内自动重连
+        reconnect_timeout=300.0,  # WebSocket 断连后 5 分钟内自动重连（7×24 稳定性）
     )
 
 

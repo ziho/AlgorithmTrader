@@ -373,7 +373,7 @@ services:
       - .:/app
       - ./data:/app/data
       - ./logs:/app/logs
-    command: python -m services.web.main --host 0.0.0.0 --port 8080 --reload
+    command: python -m services.web.main --host 0.0.0.0 --port 8080
     depends_on:
       - influxdb
     healthcheck:

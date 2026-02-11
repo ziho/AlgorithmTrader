@@ -118,6 +118,19 @@ class DownloadTaskManager:
             del self._tasks[tid]
         return len(to_remove)
 
+    def _auto_cleanup_finished(self, max_finished: int = 50) -> None:
+        """自动清理超量的已完成任务，防止内存无限增长（24/7 运行保护）"""
+        finished = [
+            (tid, t)
+            for tid, t in self._tasks.items()
+            if t.status in ("completed", "failed", "cancelled")
+        ]
+        if len(finished) > max_finished:
+            # 按完成时间排序，删除最旧的
+            finished.sort(key=lambda x: x[1].finished_at or x[1].created_at)
+            for tid, _ in finished[: len(finished) - max_finished]:
+                del self._tasks[tid]
+
     def list_tasks(self) -> list[DownloadTask]:
         return sorted(self._tasks.values(), key=lambda t: t.created_at, reverse=True)
 
@@ -243,6 +256,8 @@ class DownloadTaskManager:
             finally:
                 task.current_symbol = None
                 task.finished_at = datetime.now(UTC)
+                # 自动清理已完成任务，防止长时间运行内存泄漏
+                self._auto_cleanup_finished()
 
 
 _MANAGER: DownloadTaskManager | None = None

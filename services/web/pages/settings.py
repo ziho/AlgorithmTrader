@@ -557,7 +557,7 @@ def _render_watchdog_settings():
         render_status()
         from services.web.utils import safe_timer
 
-        safe_timer(10.0, render_status)
+        safe_timer(30.0, render_status)
 
     # 配置说明
     with ui.card().classes("card w-full mt-4"):
@@ -568,9 +568,13 @@ def _render_watchdog_settings():
 - **自动重启**: 每次检测失败后自动执行 `docker compose restart`
 - **告警通道**: Bark 推送 + Telegram 通知
 - **智能检测**: 自动识别已部署的服务，未通过 Docker Compose Profile 启动的服务不会触发误报告警
+- **默认状态**: 已关闭（需手动启动，避免消耗系统资源）
 
 > 看门狗只监控实际部署运行的容器。如果你只启动了 `--profile web`，
 > 则 collector / trader / scheduler / notifier 不会被监控，也不会发送告警。
+> 
+> **注意**: 看门狗会定期调用 `docker ps` 检查容器状态，在系统资源有限时可能影响性能。
+> 仅在需要自动重启和告警时才启用。
         """).classes("text-sm")
 
 

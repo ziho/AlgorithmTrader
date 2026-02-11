@@ -9,6 +9,7 @@ Dashboard 页面
 - 快捷链接
 """
 
+import asyncio
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,13 @@ from services.web.strategy_config import StrategyConfigManager
 # 配置路径
 CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "strategies.json"
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+
+# Dashboard 数据状态缓存（仅用于手动检测结果展示）
+_DATA_STATUS_CACHE = {
+    "computed_at": None,
+    "total_gaps": None,
+    "running": False,
+}
 
 
 def render():
@@ -96,7 +104,8 @@ def _render_service_status(container):
             pass  # 保持模拟数据
 
     # 启动异步更新
-    ui.timer(0.5, update_statuses, once=True)
+    from services.web.utils import safe_timer
+    safe_timer(0.5, update_statuses, once=True)
 
 
 def _render_quick_links():
@@ -135,11 +144,15 @@ def _render_data_status_overview():
     with ui.card().classes("card w-full"):
         with ui.row().classes("justify-between items-center mb-4"):
             ui.label("📊 数据采集状态").classes("text-lg font-medium")
-            ui.button(
-                "查看详情",
-                icon="arrow_forward",
-                on_click=lambda: ui.navigate.to("/data"),
-            ).props("flat size=sm")
+            with ui.row().classes("gap-2 items-center"):
+                ui.button(
+                    "查看详情",
+                    icon="arrow_forward",
+                    on_click=lambda: ui.navigate.to("/data"),
+                ).props("flat size=sm")
+                check_btn = ui.button("手动检测缺口", icon="search").props(
+                    "outline size=sm"
+                )
 
         status_container = ui.column().classes("w-full")
 
@@ -167,17 +180,13 @@ def _render_data_status_overview():
 
                     # 统计概览
                     total_symbols = len(data_list)
-                    total_gaps = 0
+                    total_gaps = _DATA_STATUS_CACHE.get("total_gaps")
                     outdated_count = 0
                     latest_update = None
 
                     for item in data_list:
                         symbol = item["symbol"].replace("/", "")
                         tf = item["timeframe"]
-                        gaps = manager.detect_gaps(item["exchange"], symbol, tf)
-                        if gaps:
-                            total_gaps += len(gaps)
-
                         range_info = item.get("range", (None, None))
                         if range_info[1]:
                             days_behind = (datetime.now(UTC) - range_info[1]).days
@@ -186,41 +195,34 @@ def _render_data_status_overview():
                             if latest_update is None or range_info[1] > latest_update:
                                 latest_update = range_info[1]
 
-                    # 显示概览卡片
-                    with ui.row().classes("w-full gap-4 flex-wrap"):
+                    # 显示概览卡片（四列对齐）
+                    with ui.row().classes("w-full gap-4 flex-wrap items-start"):
                         # 数据集数量
-                        with ui.column().classes("flex-1 min-w-32"):
-                            with ui.row().classes("items-baseline gap-1"):
-                                ui.label(str(total_symbols)).classes(
-                                    "text-2xl font-bold text-blue-600"
-                                )
-                                ui.label("个交易对").classes("text-sm text-gray-500")
+                        with ui.column().classes("flex-1 min-w-40"):
+                            ui.label("数据集").classes("text-xs text-gray-400")
+                            ui.label(str(total_symbols)).classes(
+                                "text-2xl font-bold text-blue-600 leading-none"
+                            )
+                            ui.label("个交易对").classes("text-sm text-gray-500")
 
-                        # 缺口状态
-                        with ui.column().classes("flex-1 min-w-32"):
-                            if total_gaps == 0:
-                                with ui.row().classes("items-center gap-1"):
-                                    ui.icon("check_circle").classes("text-green-500")
-                                    ui.label("无缺口").classes(
-                                        "text-green-600 font-medium"
-                                    )
-                            else:
-                                with ui.row().classes("items-center gap-1"):
-                                    ui.icon("warning").classes("text-yellow-500")
-                                    ui.label(f"{total_gaps} 个缺口").classes(
-                                        "text-yellow-600 font-medium"
-                                    )
+                        # 缺口状态（手动触发）
+                        with ui.column().classes("flex-1 min-w-40"):
+                            ui.label("缺口状态").classes("text-xs text-gray-400")
+                            gap_status_container = ui.row().classes(
+                                "items-center gap-1 mt-1"
+                            )
 
                         # 数据新鲜度
-                        with ui.column().classes("flex-1 min-w-32"):
+                        with ui.column().classes("flex-1 min-w-40"):
+                            ui.label("数据新鲜度").classes("text-xs text-gray-400")
                             if outdated_count == 0:
-                                with ui.row().classes("items-center gap-1"):
+                                with ui.row().classes("items-center gap-1 mt-1"):
                                     ui.icon("check_circle").classes("text-green-500")
                                     ui.label("数据最新").classes(
                                         "text-green-600 font-medium"
                                     )
                             else:
-                                with ui.row().classes("items-center gap-1"):
+                                with ui.row().classes("items-center gap-1 mt-1"):
                                     ui.icon("update").classes("text-yellow-500")
                                     ui.label(f"{outdated_count} 个落后").classes(
                                         "text-yellow-600 font-medium"
@@ -237,16 +239,120 @@ def _render_data_status_overview():
                                     time_str = f"{time_ago.seconds // 3600} 小时前"
                                 else:
                                     time_str = f"{time_ago.seconds // 60} 分钟前"
-                                ui.label(time_str).classes("font-medium")
+                                ui.label(time_str).classes("font-medium mt-1")
                             else:
-                                ui.label("-").classes("font-medium")
+                                ui.label("-").classes("font-medium mt-1")
+
+                    with ui.row().classes("w-full items-center gap-3 mt-2"):
+                        last_checked_label = ui.label("上次缺口检测: -").classes(
+                            "text-xs text-gray-400"
+                        )
+                        progress_label = ui.label("预计剩余: -").classes(
+                            "text-xs text-gray-400"
+                        )
+                        progress_bar = ui.linear_progress(value=0).classes("w-full")
+                        progress_bar.visible = False
+                        progress_label.visible = False
+
+                    def _render_gap_status(gaps: int | None, running: bool) -> None:
+                        gap_status_container.clear()
+                        with gap_status_container:
+                            if running:
+                                ui.spinner(size="xs")
+                                ui.label("检查中").classes("text-gray-500 font-medium")
+                            elif gaps is None:
+                                ui.icon("info").classes("text-gray-400")
+                                ui.label("未检查").classes("text-gray-500 font-medium")
+                            elif gaps == 0:
+                                ui.icon("check_circle").classes("text-green-500")
+                                ui.label("无缺口").classes(
+                                    "text-green-600 font-medium"
+                                )
+                            else:
+                                ui.icon("warning").classes("text-yellow-500")
+                                ui.label(f"{gaps} 个缺口").classes(
+                                    "text-yellow-600 font-medium"
+                                )
+
+                    computed_at = _DATA_STATUS_CACHE.get("computed_at")
+                    if computed_at:
+                        last_checked_label.set_text(
+                            f"上次缺口检测: {computed_at.strftime('%Y-%m-%d %H:%M:%S')}"
+                        )
+                    _render_gap_status(total_gaps, _DATA_STATUS_CACHE.get("running"))
+
+                    def _format_eta(seconds: float) -> str:
+                        if seconds < 0:
+                            return "-"
+                        if seconds >= 3600:
+                            return f"{int(seconds // 3600)}h{int(seconds % 3600 // 60)}m"
+                        if seconds >= 60:
+                            return f"{int(seconds // 60)}m{int(seconds % 60)}s"
+                        return f"{int(seconds)}s"
+
+                    def _start_gap_check() -> None:
+                        if _DATA_STATUS_CACHE.get("running"):
+                            return
+                        _DATA_STATUS_CACHE["running"] = True
+                        progress_bar.visible = True
+                        progress_label.visible = True
+                        progress_bar.value = 0
+                        progress_label.set_text("预计剩余: 计算中...")
+                        check_btn.disable()
+                        _render_gap_status(_DATA_STATUS_CACHE.get("total_gaps"), True)
+
+                        async def _compute_gaps():
+                            try:
+                                total = len(data_list)
+                                gaps_total = 0
+                                start_ts = asyncio.get_event_loop().time()
+                                for idx, item in enumerate(data_list, 1):
+                                    symbol = item["symbol"].replace("/", "")
+                                    tf = item["timeframe"]
+                                    gaps = await asyncio.get_event_loop().run_in_executor(
+                                        None,
+                                        manager.detect_gaps,
+                                        item["exchange"],
+                                        symbol,
+                                        tf,
+                                    )
+                                    if gaps:
+                                        gaps_total += len(gaps)
+                                    progress_bar.value = idx / total
+                                    elapsed = asyncio.get_event_loop().time() - start_ts
+                                    rate = idx / elapsed if elapsed > 0 else 0
+                                    remaining = (total - idx) / rate if rate > 0 else -1
+                                    progress_label.set_text(
+                                        f"预计剩余: {_format_eta(remaining)}"
+                                    )
+
+                                _DATA_STATUS_CACHE["total_gaps"] = gaps_total
+                                _DATA_STATUS_CACHE["computed_at"] = datetime.now(UTC)
+                            finally:
+                                _DATA_STATUS_CACHE["running"] = False
+                                progress_bar.visible = False
+                                progress_label.visible = False
+                                check_btn.enable()
+                                computed = _DATA_STATUS_CACHE.get("computed_at")
+                                if computed:
+                                    last_checked_label.set_text(
+                                        f"上次缺口检测: {computed.strftime('%Y-%m-%d %H:%M:%S')}"
+                                    )
+                                _render_gap_status(
+                                    _DATA_STATUS_CACHE.get("total_gaps"), False
+                                )
+
+                        asyncio.create_task(_compute_gaps())
+
+                    check_btn.on_click(_start_gap_check)
 
             except Exception as e:
                 status_container.clear()
                 with status_container:
                     ui.label(f"加载失败: {e}").classes("text-red-500 text-sm")
 
-        ui.timer(0.1, load_data_status, once=True)
+        from services.web.utils import safe_timer as _safe_timer
+        _safe_timer(0.1, load_data_status, once=True)
 
 
 def _render_download_task_overview():
@@ -306,7 +412,7 @@ def _render_download_task_overview():
 
         from services.web.utils import safe_timer
 
-        safe_timer(2.0, render_tasks)
+        safe_timer(5.0, render_tasks)
 
 
 def _render_live_trading_status():

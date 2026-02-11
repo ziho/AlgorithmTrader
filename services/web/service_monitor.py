@@ -198,13 +198,13 @@ class ServiceMonitor:
 
     async def _check_docker_containers(self) -> list[ServiceStatus]:
         """检查服务容器状态（优先心跳文件，Docker 命令备用）"""
-        # 先尝试心跳文件（跨容器共享 logs 目录）
+        # 先尝试心跳文件（跨容器共享 logs 目录，零开销）
         statuses = self._check_heartbeats()
         if statuses:
             return statuses
 
-        # 备用: Docker CLI
-        statuses = self._check_via_docker()
+        # 备用: Docker CLI（在线程中运行，不阻塞事件循环）
+        statuses = await self._check_via_docker()
         if statuses:
             return statuses
 
@@ -301,8 +301,10 @@ class ServiceMonitor:
     # Docker CLI 检查 (备用)
     # ------------------------------------------------------------------
 
-    def _check_via_docker(self) -> list[ServiceStatus]:
-        """通过 Docker CLI 检查容器状态（备用方案）"""
+    async def _check_via_docker(self) -> list[ServiceStatus]:
+        """通过 Docker CLI 检查容器状态（备用方案，在线程中运行不阻塞事件循环）"""
+        import asyncio
+
         statuses: list[ServiceStatus] = []
         service_found: dict[str, bool] = {
             "Collector": False,
@@ -312,17 +314,20 @@ class ServiceMonitor:
         }
 
         try:
-            result = subprocess.run(
-                [
-                    "docker",
-                    "ps",
-                    "-a",
-                    "--format",
-                    "{{.Names}}\t{{.Status}}\t{{.State}}",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    [
+                        "docker",
+                        "ps",
+                        "-a",
+                        "--format",
+                        "{{.Names}}\t{{.Status}}\t{{.State}}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                ),
             )
             if result.returncode != 0:
                 return []

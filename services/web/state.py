@@ -267,116 +267,123 @@ class AppState:
         while True:
             try:
                 await self._check_services()
-                await asyncio.sleep(30)  # 30秒更新一次
+                await asyncio.sleep(120)  # 120秒更新一次（降低资源消耗）
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("background_update_error", error=str(e))
-                await asyncio.sleep(60)
+                await asyncio.sleep(300)  # 出错时 5 分钟后重试
 
     async def _check_services(self):
-        """检查服务状态"""
-        import aiohttp
+        """检查服务状态（完全非阻塞，不会卡住事件循环）"""
+        import httpx
 
-        # 检查 InfluxDB
+        # 检查 InfluxDB（异步 HTTP，不阻塞事件循环）
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    "http://localhost:8086/health",
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as resp:
-                    if resp.status == 200:
-                        self._services["influxdb"].status = "healthy"
-                        self._services["influxdb"].message = ""
-                    else:
-                        self._services["influxdb"].status = "warning"
-                        self._services["influxdb"].message = f"HTTP {resp.status}"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get("http://localhost:8086/health")
+                if resp.status_code == 200:
+                    self._services["influxdb"].status = "healthy"
+                    self._services["influxdb"].message = ""
+                else:
+                    self._services["influxdb"].status = "warning"
+                    self._services["influxdb"].message = f"HTTP {resp.status_code}"
         except Exception as e:
             self._services["influxdb"].status = "error"
-            self._services["influxdb"].message = str(e)
+            self._services["influxdb"].message = str(e)[:80]
         self._services["influxdb"].last_check = datetime.now()
 
-        # 检查其他服务（通过 docker ps 或进程检查）
+        # 检查其他服务：优先读心跳文件（零开销），仅在无心跳时才用 docker
+        from src.ops.heartbeat import is_heartbeat_stale, read_all_heartbeats
+
+        heartbeats = read_all_heartbeats()
+        used_heartbeat = False
+
+        if heartbeats:
+            for service_name in ["collector", "trader", "scheduler"]:
+                hb = heartbeats.get(service_name)
+                if hb is None:
+                    self._services[service_name].status = "not_deployed"
+                    self._services[service_name].message = "服务未启用"
+                elif is_heartbeat_stale(hb):
+                    self._services[service_name].status = "warning"
+                    self._services[service_name].message = "心跳超时"
+                elif hb.status in ("running", "starting"):
+                    self._services[service_name].status = "healthy"
+                    self._services[service_name].message = f"运行中"
+                else:
+                    self._services[service_name].status = "warning"
+                    self._services[service_name].message = hb.status
+                self._services[service_name].last_check = datetime.now()
+            used_heartbeat = True
+
+        if not used_heartbeat:
+            # 回退：使用单次 docker ps -a（在线程中，不阻塞事件循环）
+            await self._check_services_via_docker()
+
+    async def _check_services_via_docker(self):
+        """通过单次 docker 命令检查容器状态（在线程中运行，不阻塞事件循环）"""
         import subprocess
 
-        # 先获取所有容器（包括已停止的），用于区分"未部署"和"已停止"
-        all_containers: dict[str, str] = {}
         try:
-            result = subprocess.run(
-                [
-                    "docker",
-                    "ps",
-                    "-a",
-                    "--filter",
-                    "name=algorithmtrader-",
-                    "--format",
-                    "{{.Names}}\t{{.State}}",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    [
+                        "docker", "ps", "-a",
+                        "--filter", "name=algorithmtrader-",
+                        "--format", "{{.Names}}\t{{.State}}\t{{.Status}}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                ),
             )
+
+            all_containers: dict[str, tuple[str, str]] = {}  # name -> (state, status_text)
             if result.returncode == 0:
                 for line in result.stdout.strip().split("\n"):
                     if not line:
                         continue
                     parts = line.split("\t")
-                    if len(parts) >= 2:
-                        all_containers[parts[0]] = parts[1]
-        except Exception:
-            pass
+                    if len(parts) >= 3:
+                        all_containers[parts[0]] = (parts[1], parts[2])
+                    elif len(parts) >= 2:
+                        all_containers[parts[0]] = (parts[1], parts[1])
 
-        for service_name in ["collector", "trader", "scheduler"]:
-            try:
-                # 检查容器是否存在（已部署）
-                container_exists = any(
-                    name in all_containers
-                    for name in [
-                        f"algorithmtrader-{service_name}",
-                        f"algorithmtrader-{service_name}-1",
-                        f"algorithmtrader_{service_name}_1",
-                    ]
-                )
+            for service_name in ["collector", "trader", "scheduler"]:
+                found = False
+                for suffix in ("", "-1"):
+                    key = f"algorithmtrader-{service_name}{suffix}"
+                    if key in all_containers:
+                        state, status_text = all_containers[key]
+                        found = True
+                        if state == "running":
+                            self._services[service_name].status = "healthy"
+                            self._services[service_name].message = status_text
+                        elif state == "exited":
+                            self._services[service_name].status = "stopped"
+                            self._services[service_name].message = "容器已停止"
+                        else:
+                            self._services[service_name].status = "warning"
+                            self._services[service_name].message = status_text[:30]
+                        break
 
-                if not container_exists:
-                    # 容器从未创建过 → 未部署（不是错误）
+                if not found:
                     self._services[service_name].status = "not_deployed"
                     self._services[service_name].message = "未部署 (Profile 未激活)"
-                else:
-                    result = subprocess.run(
-                        [
-                            "docker",
-                            "ps",
-                            "--filter",
-                            f"name=algorithmtrader-{service_name}",
-                            "--format",
-                            "{{.Status}}",
-                        ],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                    )
-                    status_output = result.stdout.strip()
-                    if status_output and "Up" in status_output:
-                        self._services[service_name].status = "healthy"
-                        self._services[service_name].message = status_output
-                    elif status_output:
-                        self._services[service_name].status = "warning"
-                        self._services[service_name].message = status_output
-                    else:
-                        self._services[service_name].status = "stopped"
-                        self._services[service_name].message = "容器已停止"
-            except subprocess.TimeoutExpired:
-                self._services[service_name].status = "unknown"
-                self._services[service_name].message = "Check timed out"
-            except FileNotFoundError:
-                # Docker not installed, check if running locally via process
+                self._services[service_name].last_check = datetime.now()
+
+        except FileNotFoundError:
+            for service_name in ["collector", "trader", "scheduler"]:
                 self._services[service_name].status = "unknown"
                 self._services[service_name].message = "Docker not available"
-            except Exception as e:
-                self._services[service_name].status = "error"
-                self._services[service_name].message = str(e)
-            self._services[service_name].last_check = datetime.now()
+                self._services[service_name].last_check = datetime.now()
+        except Exception as e:
+            for service_name in ["collector", "trader", "scheduler"]:
+                self._services[service_name].status = "unknown"
+                self._services[service_name].message = str(e)[:50]
+                self._services[service_name].last_check = datetime.now()
 
     # ==================== 公共方法 ====================
 

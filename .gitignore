@@ -48,3 +48,8 @@ Thumbs.db
 # third-party
 third-party/
 .nicegui/
+
+# SKILL
+.github/skills/
+SKILL.md
+.agents/
