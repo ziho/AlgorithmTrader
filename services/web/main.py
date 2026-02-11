@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from nicegui import app, ui
 
 from services.web.pages import (
+    a_share,
     backtests,
     dashboard,
     data,
@@ -201,6 +202,7 @@ def create_header():
             with ui.row().classes("gap-2"):
                 ui.link("Dashboard", "/").classes("nav-link text-base")
                 ui.link("数据", "/data").classes("nav-link text-base")
+                ui.link("A股", "/a-share").classes("nav-link text-base")
                 ui.link("策略", "/strategies").classes("nav-link text-base")
                 ui.link("回测", "/backtests").classes("nav-link text-base")
                 ui.link("优化", "/optimization").classes("nav-link text-base")
@@ -372,6 +374,13 @@ def backtests_page():
 def optimization_page():
     """参数优化页"""
     optimization.render()
+
+
+@ui.page("/a-share")
+@create_layout
+def a_share_page():
+    """A 股数据分析页"""
+    a_share.render()
 
 
 @ui.page("/data")

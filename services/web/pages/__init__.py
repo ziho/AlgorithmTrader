@@ -3,6 +3,7 @@ Web 页面模块
 """
 
 from . import (
+    a_share,
     backtests,
     dashboard,
     data,
@@ -20,4 +21,5 @@ __all__ = [
     "optimization",
     "notifications",
     "settings",
+    "a_share",
 ]

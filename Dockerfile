@@ -24,9 +24,9 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 COPY services/ ./services/
 
-# 安装 Python 依赖
+# 安装 Python 依赖 (含 A 股 Tushare 数据源)
 RUN pip install --upgrade pip && \
-    pip install -e ".[dev]"
+    pip install -e ".[dev,ashare]"
 
 # 默认命令
 CMD ["python", "-c", "print('AlgorithmTrader container ready')"]
