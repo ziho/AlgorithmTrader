@@ -74,6 +74,11 @@ dev = [
     "types-python-dateutil",
 ]
 
+# A 股数据源（Tushare Pro）
+ashare = [
+    "tushare>=1.4.0",
+]
+
 research = [
     # Jupyter
     "jupyter>=1.0.0",
@@ -93,7 +98,7 @@ ibkr = [
 ]
 
 all = [
-    "algorithmtrader[dev,research,ibkr]",
+    "algorithmtrader[dev,research,ibkr,ashare]",
 ]
 
 [project.urls]
@@ -182,6 +187,7 @@ module = [
     "influxdb_client.*",
     "telegram.*",
     "apscheduler.*",
+    "tushare.*",
 ]
 ignore_missing_imports = true
 

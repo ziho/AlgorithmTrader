@@ -85,6 +85,17 @@ EXCHANGE_FEE_CONFIGS: dict[str, FeeConfig] = {
         taker_rate=Decimal("0.0001"),
         min_fee=Decimal("1.0"),  # 最低$1
     ),
+    # A 股费率（佣金部分，不含印花税）
+    "a_tushare": FeeConfig(
+        maker_rate=Decimal("0.0003"),  # 万三
+        taker_rate=Decimal("0.0003"),  # 万三
+        min_fee=Decimal("5.0"),  # 最低 5 元
+    ),
+    "a_share": FeeConfig(
+        maker_rate=Decimal("0.0003"),
+        taker_rate=Decimal("0.0003"),
+        min_fee=Decimal("5.0"),
+    ),
 }
 
 
@@ -233,6 +244,62 @@ class FeeModel:
         return cls(config)
 
 
+class AShareFeeModel(FeeModel):
+    """
+    A 股手续费模型
+
+    包含:
+    - 佣金：买卖均收，默认万三，最低 5 元
+    - 印花税：仅卖出收取，0.05%
+    - 过户费：0.001%
+    """
+
+    def __init__(
+        self,
+        config: FeeConfig | None = None,
+        stamp_tax_rate: Decimal = Decimal("0.0005"),
+        transfer_fee_rate: Decimal = Decimal("0.00001"),
+    ):
+        super().__init__(config or EXCHANGE_FEE_CONFIGS["a_share"])
+        self.stamp_tax_rate = stamp_tax_rate
+        self.transfer_fee_rate = transfer_fee_rate
+
+    def calculate_fee(
+        self,
+        quantity: Decimal,
+        price: Decimal,
+        is_maker: bool = False,
+        is_sell: bool = False,
+    ) -> Decimal:
+        """
+        计算 A 股总手续费
+
+        Args:
+            quantity: 成交数量
+            price: 成交价格
+            is_maker: 是否 Maker（A 股无意义）
+            is_sell: 是否卖出（影响印花税）
+
+        Returns:
+            总手续费 = 佣金 + 印花税 + 过户费
+        """
+        trade_value = quantity * price
+
+        # 佣金
+        commission = max(
+            trade_value * self.config.taker_rate,
+            self.config.min_fee,
+        )
+
+        # 印花税（仅卖出）
+        stamp_tax = trade_value * self.stamp_tax_rate if is_sell else Decimal("0")
+
+        # 过户费
+        transfer_fee = trade_value * self.transfer_fee_rate
+
+        return commission + stamp_tax + transfer_fee
+
+
 @dataclass
 class ExecutionCost:
     """执行成本汇总"""
@@ -365,6 +432,7 @@ __all__ = [
     "PercentSlippage",
     "VolumeImpactSlippage",
     "FeeModel",
+    "AShareFeeModel",
     "ExecutionCost",
     "CostCalculator",
 ]

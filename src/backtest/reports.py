@@ -83,11 +83,14 @@ class BacktestSummary:
     # 绩效指标
     metrics: PerformanceMetrics = field(default_factory=PerformanceMetrics)
 
+    # A 股成本分解（仅 A 股回测时填充）
+    cost_breakdown: dict[str, str] | None = None
+
     # 配置信息
     config: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "run_id": self.run_id,
             "strategy_name": self.strategy_name,
             "symbols": self.symbols,
@@ -103,6 +106,9 @@ class BacktestSummary:
             "metrics": self.metrics.to_dict(),
             "config": self.config,
         }
+        if self.cost_breakdown:
+            d["cost_breakdown"] = self.cost_breakdown
+        return d
 
 
 class ReportGenerator:
@@ -178,6 +184,13 @@ class ReportGenerator:
             },
         )
 
+        # A 股成本分解
+        exchange = result.config.exchange.lower()
+        if exchange in ("a_tushare", "a_share") and result.trades:
+            summary.cost_breakdown = self._calculate_a_share_cost_breakdown(
+                result.trades
+            )
+
         return summary
 
     def _calculate_metrics(self, result: "BacktestResult") -> PerformanceMetrics:
@@ -231,6 +244,48 @@ class ReportGenerator:
             gross_loss=gross_loss,
             total_commission=total_commission,
         )
+
+    @staticmethod
+    def _calculate_a_share_cost_breakdown(
+        trades: list[Any],
+    ) -> dict[str, str]:
+        """
+        计算 A 股交易成本分解
+
+        遍历所有成交记录，用 calculate_a_share_cost 逐笔重算
+        并汇总佣金、印花税、过户费。
+
+        Args:
+            trades: 成交记录列表
+
+        Returns:
+            成本分解字典：commission / stamp_tax / transfer_fee / total
+        """
+        from src.backtest.a_share_rules import calculate_a_share_cost
+
+        total_commission = Decimal("0")
+        total_stamp_tax = Decimal("0")
+        total_transfer_fee = Decimal("0")
+
+        for trade in trades:
+            is_sell = trade.side.value == "sell"
+            breakdown = calculate_a_share_cost(
+                quantity=trade.quantity,
+                price=trade.price,
+                is_sell=is_sell,
+            )
+            total_commission += breakdown.commission
+            total_stamp_tax += breakdown.stamp_tax
+            total_transfer_fee += breakdown.transfer_fee
+
+        total = total_commission + total_stamp_tax + total_transfer_fee
+
+        return {
+            "commission": str(total_commission.quantize(Decimal("0.01"))),
+            "stamp_tax": str(total_stamp_tax.quantize(Decimal("0.01"))),
+            "transfer_fee": str(total_transfer_fee.quantize(Decimal("0.01"))),
+            "total": str(total.quantize(Decimal("0.01"))),
+        }
 
     def generate_report(
         self,
@@ -418,9 +473,28 @@ def generate_text_report(summary: BacktestSummary) -> str:
         f"胜率: {summary.metrics.trade_stats.win_rate * 100:.2f}%",
         f"盈亏比: {summary.metrics.trade_stats.profit_factor:.2f}",
         f"总手续费: {summary.metrics.trade_stats.total_commission:,.2f}",
-        "",
-        "=" * 60,
     ]
+
+    # A 股成本分解
+    if summary.cost_breakdown:
+        lines.extend(
+            [
+                "",
+                "A 股交易成本分解",
+                "-" * 40,
+                f"佣金: {summary.cost_breakdown['commission']}",
+                f"印花税: {summary.cost_breakdown['stamp_tax']}",
+                f"过户费: {summary.cost_breakdown['transfer_fee']}",
+                f"合计: {summary.cost_breakdown['total']}",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "=" * 60,
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -475,7 +549,22 @@ def generate_markdown_report(summary: BacktestSummary) -> str:
 | 胜率 | {summary.metrics.trade_stats.win_rate * 100:.2f}% |
 | 盈亏比 | {summary.metrics.trade_stats.profit_factor:.2f} |
 | 总手续费 | {summary.metrics.trade_stats.total_commission:,.2f} |
+"""  # noqa: E501
 
+    # A 股成本分解
+    if summary.cost_breakdown:
+        md += f"""
+## A 股交易成本分解
+
+| 项目 | 金额 |
+|------|------|
+| 佣金 | {summary.cost_breakdown["commission"]} |
+| 印花税 | {summary.cost_breakdown["stamp_tax"]} |
+| 过户费 | {summary.cost_breakdown["transfer_fee"]} |
+| **合计** | **{summary.cost_breakdown["total"]}** |
+"""
+
+    md += f"""
 ---
 *生成时间: {summary.run_timestamp}*
 """

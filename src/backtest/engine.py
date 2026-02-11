@@ -20,6 +20,7 @@ from src.core.timeframes import Timeframe
 from src.core.typing import BarFrame, OrderIntent, PositionSide, TargetPosition
 from src.data.storage.parquet_store import ParquetStore
 from src.execution.slippage_fee import (
+    AShareFeeModel,
     CostCalculator,
     ExecutionCost,
     FeeModel,
@@ -354,11 +355,33 @@ class BacktestEngine:
         self.config = config or BacktestConfig()
         self.parquet_store = parquet_store or ParquetStore()
 
-        # 成本计算器
-        self.cost_calculator = CostCalculator(
-            slippage_model=PercentSlippage(self.config.slippage_pct),
-            fee_model=FeeModel.from_exchange(self.config.exchange),
+        # A 股交易规则（根据 exchange 配置自动启用）
+        self._a_share_rules = None
+        self._is_a_share = self.config.exchange.lower() in (
+            "a_tushare",
+            "a_share",
+            "sse",
+            "szse",
         )
+
+        if self._is_a_share:
+            from src.backtest.a_share_rules import AShareTradingRules
+
+            self._a_share_rules = AShareTradingRules(
+                commission_rate=self.config.commission_rate,
+            )
+
+        # 成本计算器
+        if self._is_a_share:
+            self.cost_calculator = CostCalculator(
+                slippage_model=PercentSlippage(self.config.slippage_pct),
+                fee_model=AShareFeeModel(),
+            )
+        else:
+            self.cost_calculator = CostCalculator(
+                slippage_model=PercentSlippage(self.config.slippage_pct),
+                fee_model=FeeModel.from_exchange(self.config.exchange),
+            )
 
         # 状态
         self._cash = self.config.initial_capital
@@ -366,6 +389,9 @@ class BacktestEngine:
         self._equity_curve: list[EquityPoint] = []
         self._trades: list[Trade] = []
         self._peak_equity = self.config.initial_capital
+
+        # A 股回测时缓存 pre_close
+        self._pre_closes: dict[str, Decimal] = {}
 
     def _get_position(self, symbol: str) -> Position:
         """获取或创建持仓"""
@@ -452,19 +478,76 @@ class BacktestEngine:
         bar_volume: Decimal,
         timestamp: datetime,
         strategy_name: str = "",
+        pre_close: Decimal | None = None,
     ) -> Trade | None:
         """执行交易"""
         if quantity <= 0:
             return None
 
+        # A 股规则验证
+        if self._a_share_rules is not None:
+            # 从 symbol 中提取 ts_code
+            ts_code = self._extract_ts_code(symbol)
+            is_buy = side == OrderSide.BUY
+
+            # 使用缓存的 pre_close 或传入的
+            effective_pre_close = pre_close or self._pre_closes.get(symbol)
+
+            validation = self._a_share_rules.validate_order(
+                is_buy=is_buy,
+                quantity=quantity,
+                price=price,
+                ts_code=ts_code,
+                trade_date=timestamp,
+                pre_close=effective_pre_close,
+            )
+
+            if not validation.allowed:
+                logger.debug(
+                    "a_share_order_rejected",
+                    symbol=symbol,
+                    reason=validation.reject_reason,
+                    message=validation.message,
+                )
+                return None
+
+            # 使用调整后的数量（取整到 100 股）
+            quantity = validation.adjusted_quantity
+            if quantity <= 0:
+                return None
+
         # 计算交易成本
         cost_side = CostOrderSide.BUY if side == OrderSide.BUY else CostOrderSide.SELL
-        cost: ExecutionCost = self.cost_calculator.calculate(
-            price=price,
-            quantity=quantity,
-            side=cost_side,
-            bar_volume=bar_volume,
-        )
+
+        if self._is_a_share and isinstance(
+            self.cost_calculator.fee_model, AShareFeeModel
+        ):
+            # A 股使用带印花税的成本计算
+            filled_price = self.cost_calculator.slippage_model.calculate_slippage(
+                price=price,
+                quantity=quantity,
+                side=cost_side,
+                bar_volume=bar_volume,
+            )
+            commission = self.cost_calculator.fee_model.calculate_fee(
+                quantity=quantity,
+                price=filled_price,
+                is_sell=(side == OrderSide.SELL),
+            )
+            cost = ExecutionCost(
+                original_price=price,
+                filled_price=filled_price,
+                quantity=quantity,
+                commission=commission,
+                side=cost_side,
+            )
+        else:
+            cost = self.cost_calculator.calculate(
+                price=price,
+                quantity=quantity,
+                side=cost_side,
+                bar_volume=bar_volume,
+            )
 
         # 检查资金是否足够（买入时）
         if side == OrderSide.BUY:
@@ -487,6 +570,11 @@ class BacktestEngine:
         else:
             self._cash += cost.trade_value - cost.commission
 
+        # A 股 T+1 记录
+        if self._a_share_rules is not None and side == OrderSide.BUY:
+            ts_code = self._extract_ts_code(symbol)
+            self._a_share_rules.record_buy(ts_code, timestamp)
+
         # 创建成交记录
         trade = Trade(
             timestamp=timestamp,
@@ -500,6 +588,19 @@ class BacktestEngine:
         self._trades.append(trade)
 
         return trade
+
+    @staticmethod
+    def _extract_ts_code(symbol: str) -> str:
+        """从 symbol 字符串中提取 ts_code
+
+        例如 'A_TUSHARE:600519.SH/CNY' -> '600519.SH'
+        """
+        if ":" in symbol:
+            pair = symbol.split(":", 1)[1]
+            if "/" in pair:
+                return pair.split("/", 1)[0]
+            return pair
+        return symbol
 
     def _create_bar_frame(
         self,
@@ -548,6 +649,11 @@ class BacktestEngine:
         self._equity_curve = []
         self._trades = []
         self._peak_equity = self.config.initial_capital
+        self._pre_closes = {}
+
+        # 重置 A 股规则状态
+        if self._a_share_rules is not None:
+            self._a_share_rules.reset()
 
         # 加载数据
         data: dict[str, pd.DataFrame] = {}
@@ -687,6 +793,11 @@ class BacktestEngine:
                 )
             )
 
+            # A 股：缓存当前 close 作为下一根 bar 的 pre_close
+            if self._is_a_share:
+                for sym, price in current_prices.items():
+                    self._pre_closes[sym] = price
+
         # 策略停止
         strategy.on_stop()
 
@@ -760,6 +871,11 @@ class BacktestEngine:
         self._equity_curve = []
         self._trades = []
         self._peak_equity = self.config.initial_capital
+        self._pre_closes = {}
+
+        # 重置 A 股规则状态
+        if self._a_share_rules is not None:
+            self._a_share_rules.reset()
 
         if not data:
             logger.warning("no_data_provided")
@@ -902,6 +1018,11 @@ class BacktestEngine:
                     drawdown_pct=drawdown_pct,
                 )
             )
+
+            # A 股：缓存当前 close 作为下一根 bar 的 pre_close
+            if self._is_a_share:
+                for sym, price in current_prices.items():
+                    self._pre_closes[sym] = price
 
         # 策略停止
         strategy.on_stop()

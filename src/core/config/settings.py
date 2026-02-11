@@ -180,6 +180,31 @@ class SmtpSettings(BaseSettings):
         return bool(self.host and self.user)
 
 
+class TushareSettings(BaseSettings):
+    """Tushare A 股数据源配置"""
+
+    model_config = SettingsConfigDict(
+        env_prefix="TUSHARE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    token: SecretStr = Field(default=SecretStr(""), description="Tushare Pro API Token")
+    api_url: str = Field(
+        default="http://api.tushare.pro", description="Tushare API 地址"
+    )
+    requests_per_minute: int = Field(default=200, description="每分钟最大请求数")
+    backfill_start: str = Field(
+        default="20180101", description="回填起始日期 (YYYYMMDD)"
+    )
+
+    @property
+    def enabled(self) -> bool:
+        """检查 Tushare 是否已配置"""
+        return bool(self.token.get_secret_value())
+
+
 class Settings(BaseSettings):
     """主配置类"""
 
@@ -214,6 +239,7 @@ class Settings(BaseSettings):
     bark: BarkSettings = Field(default_factory=BarkSettings)
     webhook: WebhookSettings = Field(default_factory=WebhookSettings)
     smtp: SmtpSettings = Field(default_factory=SmtpSettings)
+    tushare: TushareSettings = Field(default_factory=TushareSettings)
 
     @property
     def is_prod(self) -> bool:

@@ -20,6 +20,7 @@ class Exchange(StrEnum):
     OKX = "OKX"
     BINANCE = "BINANCE"
     IBKR = "IBKR"
+    A_TUSHARE = "A_TUSHARE"  # A 股 (Tushare 数据源)
 
 
 class AssetType(StrEnum):
@@ -51,6 +52,7 @@ class Symbol:
         Exchange.OKX: "{base}-{quote}",  # OKX 格式: BTC-USDT
         Exchange.BINANCE: "{base}{quote}",  # Binance 格式: BTCUSDT
         Exchange.IBKR: "{base}",  # IBKR 格式: AAPL (股票代码)
+        Exchange.A_TUSHARE: "{base}",  # A 股格式: 600519.SH (ts_code)
     }
 
     @property
@@ -162,6 +164,11 @@ class CommonSymbols:
     IBKR_AAPL = Symbol(Exchange.IBKR, "AAPL", "USD", AssetType.STOCK)
     IBKR_TSLA = Symbol(Exchange.IBKR, "TSLA", "USD", AssetType.STOCK)
     IBKR_SPY = Symbol(Exchange.IBKR, "SPY", "USD", AssetType.STOCK)
+
+    # A 股
+    A_MOUTAI = Symbol(Exchange.A_TUSHARE, "600519.SH", "CNY", AssetType.STOCK)
+    A_PING_AN = Symbol(Exchange.A_TUSHARE, "601318.SH", "CNY", AssetType.STOCK)
+    A_KWEICHOW = Symbol(Exchange.A_TUSHARE, "000858.SZ", "CNY", AssetType.STOCK)
 
 
 # 导出

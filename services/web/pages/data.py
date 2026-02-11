@@ -65,12 +65,13 @@ def render():
 
     refresh_stats()
 
-    # Tab 切换 — 4 个 tab
+    # Tab 切换 — 5 个 tab
     with ui.tabs().classes("w-full mt-4") as tabs:
         download_tab = ui.tab("历史数据下载")
         market_tab = ui.tab("实时行情")
         local_tab = ui.tab("本地数据")
         influx_tab = ui.tab("InfluxDB 同步")
+        a_share_tab = ui.tab("A 股数据")
 
     with ui.tab_panels(tabs, value=download_tab).classes("w-full"):
         with ui.tab_panel(download_tab):
@@ -84,6 +85,9 @@ def render():
 
         with ui.tab_panel(influx_tab):
             _render_influx_sync_panel()
+
+        with ui.tab_panel(a_share_tab):
+            _render_a_share_panel(refresh_stats)
 
 
 # ============================================
@@ -642,6 +646,7 @@ def _render_market_panel():
 
         # 初次加载
         from services.web.utils import safe_timer as _safe_timer
+
         _safe_timer(0.3, refresh_quotes, once=True)
 
         # 定时刷新 — 动态间隔
@@ -882,6 +887,7 @@ def _render_local_data_panel():
 
         refresh_btn.on_click(load_datasets)
         from services.web.utils import safe_timer as _safe_timer2
+
         _safe_timer2(0.5, load_datasets, once=True)
 
     # 数据操作
@@ -1286,6 +1292,347 @@ def _render_influx_sync_panel():
         ui.button(
             "查询 InfluxDB 数据", icon="storage", on_click=load_influx_overview
         ).props("flat")
+
+
+# ============================================
+# Tab 5: A 股数据
+# ============================================
+
+
+def _render_a_share_panel(refresh_stats_fn=None):
+    """渲染 A 股数据面板 — 全市场日线下载 + 本地数据统计"""
+    with ui.card().classes("card w-full"):
+        ui.label("🇨🇳 A 股日线数据下载").classes("text-lg font-medium mb-2")
+        ui.label(
+            "使用 Tushare 数据源下载 A 股全市场日线 OHLCV 及基本面数据，"
+            "自动按交易日逐日回填并存储为 Parquet 格式（支持断点续传）。"
+        ).classes("text-gray-500 text-sm mb-2")
+
+        # 存储路径提示
+        with ui.row().classes(
+            "gap-2 items-center mb-4 bg-blue-50 dark:bg-blue-900/20 p-2 rounded"
+        ):
+            ui.icon("folder").classes("text-blue-500 text-sm")
+            ui.label(
+                f"下载目录: {PROJECT_ROOT / 'data' / 'parquet' / 'a_tushare' / '<股票代码>' / '1d'}"
+            ).classes("text-xs text-blue-600 dark:text-blue-300 font-mono")
+
+        # 参数配置
+        import os
+
+        default_start = os.getenv("TUSHARE_BACKFILL_START", "20180101")
+        formatted_start = (
+            f"{default_start[:4]}-{default_start[4:6]}-{default_start[6:8]}"
+            if len(default_start) == 8
+            else "2018-01-01"
+        )
+
+        with ui.row().classes("gap-4 flex-wrap items-end"):
+            data_type_select = (
+                ui.select(
+                    {
+                        "daily": "日线 OHLCV",
+                        "daily_basic": "每日指标 (市值/换手等)",
+                        "adj_factor": "复权因子",
+                    },
+                    value="daily",
+                    label="数据类型",
+                )
+                .classes("min-w-48")
+                .props("outlined dense")
+            )
+
+            with (
+                ui.input(label="开始日期", value=formatted_start)
+                .classes("min-w-40")
+                .props("outlined dense") as a_start_input
+            ):
+                with ui.menu().props("no-parent-event") as a_start_menu:
+                    with ui.date(mask="YYYY-MM-DD").bind_value(a_start_input):
+                        with ui.row().classes("justify-end"):
+                            ui.button("确定", on_click=a_start_menu.close).props("flat")
+                with a_start_input.add_slot("append"):
+                    ui.icon("event").on("click", a_start_menu.open).classes(
+                        "cursor-pointer"
+                    )
+
+            with (
+                ui.input(
+                    label="结束日期",
+                    value=datetime.now().strftime("%Y-%m-%d"),
+                )
+                .classes("min-w-40")
+                .props("outlined dense") as a_end_input
+            ):
+                with ui.menu().props("no-parent-event") as a_end_menu:
+                    with ui.date(mask="YYYY-MM-DD").bind_value(a_end_input):
+                        with ui.row().classes("justify-end"):
+                            ui.button("确定", on_click=a_end_menu.close).props("flat")
+                with a_end_input.add_slot("append"):
+                    ui.icon("event").on("click", a_end_menu.open).classes(
+                        "cursor-pointer"
+                    )
+
+        # 进度条 & 状态
+        progress_container = ui.column().classes("w-full mt-4")
+        progress_bar = ui.linear_progress(value=0, show_value=False).classes(
+            "w-full mt-2"
+        )
+        progress_bar.visible = False
+        progress_label = ui.label("").classes("text-sm text-gray-500 mt-1")
+
+        # 按钮行
+        with ui.row().classes("gap-4 mt-4 items-center"):
+            download_btn = ui.button("开始全市场下载", icon="cloud_download").props(
+                "color=primary"
+            )
+            cancel_btn = ui.button("取消", icon="cancel").props("flat color=red")
+            cancel_btn.visible = False
+
+        # 下载器引用
+        _fetcher_ref: dict[str, object] = {"fetcher": None}
+
+        def _on_progress(stats):
+            """进度回调"""
+            pct = stats.progress
+            progress_bar.value = pct / 100
+            eta_str = ""
+            if stats.eta_seconds is not None:
+                eta_str = f" · ETA {_format_eta(stats.eta_seconds)}"
+            progress_label.set_text(
+                f"已完成 {stats.completed_days + stats.skipped_days}"
+                f" / {stats.total_days} 交易日"
+                f" ({pct:.1f}%){eta_str}"
+                f" · 共 {stats.total_rows:,} 条"
+                f" · 失败 {stats.failed_days}"
+            )
+
+        async def start_a_share_download():
+            """启动 A 股数据下载"""
+            download_btn.disable()
+            cancel_btn.visible = True
+            progress_bar.visible = True
+            progress_bar.value = 0
+            progress_label.set_text("正在初始化 Tushare 连接...")
+            progress_container.clear()
+
+            try:
+                from src.data.fetcher.tushare_history import TushareHistoryFetcher
+
+                fetcher = TushareHistoryFetcher(data_dir=PROJECT_ROOT / "data")
+                _fetcher_ref["fetcher"] = fetcher
+                fetcher.set_progress_callback(_on_progress)
+
+                # 日期格式转换
+                start_str = a_start_input.value.replace("-", "")
+                end_str = a_end_input.value.replace("-", "")
+
+                selected_type = data_type_select.value
+
+                if selected_type == "daily":
+                    progress_label.set_text("正在获取交易日历并下载日线数据...")
+                    stats = await fetcher.backfill_daily(
+                        start_date=start_str, end_date=end_str
+                    )
+                elif selected_type == "daily_basic":
+                    progress_label.set_text("正在下载每日指标数据...")
+                    stats = await fetcher.backfill_daily_basic(
+                        start_date=start_str, end_date=end_str
+                    )
+                elif selected_type == "adj_factor":
+                    progress_label.set_text("正在下载复权因子数据...")
+                    stats = await fetcher.backfill_adj_factor(
+                        start_date=start_str, end_date=end_str
+                    )
+                else:
+                    progress_label.set_text("未知数据类型")
+                    return
+
+                await fetcher.close()
+                _fetcher_ref["fetcher"] = None
+
+                # 完成
+                progress_bar.value = 1.0
+                progress_container.clear()
+                with progress_container:
+                    with ui.card().classes(
+                        "bg-green-50 dark:bg-green-900/20 p-4 w-full"
+                    ):
+                        ui.label("✅ 下载完成").classes("text-green-600 font-medium")
+                        ui.label(
+                            f"  完成: {stats.completed_days} 日"
+                            f" · 跳过: {stats.skipped_days} 日"
+                            f" · 失败: {stats.failed_days} 日"
+                        ).classes("text-gray-600 text-sm")
+                        ui.label(f"  共写入 {stats.total_rows:,} 条数据").classes(
+                            "text-gray-600 text-sm"
+                        )
+                        ui.label(f"  耗时 {stats.elapsed_seconds:.1f} 秒").classes(
+                            "text-gray-500 text-sm"
+                        )
+
+                progress_label.set_text("")
+                if refresh_stats_fn:
+                    refresh_stats_fn()
+
+            except Exception as e:
+                progress_container.clear()
+                with progress_container:
+                    with ui.card().classes("bg-red-50 dark:bg-red-900/20 p-4 w-full"):
+                        ui.label("❌ 下载失败").classes("text-red-600 font-medium")
+                        ui.label(f"  {e}").classes("text-red-500 text-sm")
+                progress_label.set_text("")
+                logger.error("a_share_download_error", error=str(e))
+            finally:
+                download_btn.enable()
+                cancel_btn.visible = False
+                progress_bar.visible = False
+
+        async def cancel_download():
+            fetcher = _fetcher_ref.get("fetcher")
+            if fetcher is not None:
+                fetcher.cancel()
+                ui.notify("取消请求已发送，将在当前交易日完成后停止", type="warning")
+
+        download_btn.on_click(start_a_share_download)
+        cancel_btn.on_click(cancel_download)
+
+    # 本地 A 股数据统计
+    _render_a_share_local_stats()
+
+
+def _render_a_share_local_stats():
+    """渲染本地 A 股数据统计面板"""
+    with ui.card().classes("card w-full mt-4"):
+        with ui.row().classes("justify-between items-center mb-4"):
+            ui.label("📊 本地 A 股数据统计").classes("text-lg font-medium")
+            refresh_btn = ui.button("刷新", icon="refresh").props("flat dense")
+
+        stats_container = ui.column().classes("w-full")
+
+        async def load_stats():
+            stats_container.clear()
+            with stats_container:
+                with ui.row().classes("justify-center py-4"):
+                    ui.spinner("dots")
+                    ui.label("正在扫描本地数据...").classes("text-gray-400 ml-2")
+
+            try:
+                from src.data.fetcher.tushare_history import TushareHistoryFetcher
+
+                fetcher = TushareHistoryFetcher(data_dir=PROJECT_ROOT / "data")
+                local_stats = await asyncio.get_event_loop().run_in_executor(
+                    None, fetcher.get_local_stats
+                )
+                await fetcher.close()
+
+                stats_container.clear()
+                with stats_container:
+                    # OHLCV 统计卡片
+                    with ui.row().classes("gap-4 flex-wrap mb-4"):
+                        with ui.card().classes("card flex-1 min-w-40"):
+                            ui.label("🏢 股票数量").classes("text-sm text-gray-500")
+                            ui.label(f"{local_stats['stock_count']:,}").classes(
+                                "text-xl font-bold mt-1"
+                            )
+                            ui.label("已下载的 A 股").classes("text-xs text-gray-400")
+
+                        with ui.card().classes("card flex-1 min-w-40"):
+                            ui.label("📁 Parquet 文件").classes("text-sm text-gray-500")
+                            ui.label(f"{local_stats['file_count']:,}").classes(
+                                "text-xl font-bold mt-1"
+                            )
+                            size_mb = local_stats["total_size_mb"]
+                            if size_mb >= 1024:
+                                size_str = f"{size_mb / 1024:.2f} GB"
+                            else:
+                                size_str = f"{size_mb:.1f} MB"
+                            ui.label(f"占用 {size_str}").classes(
+                                "text-xs text-gray-400"
+                            )
+
+                        with ui.card().classes("card flex-1 min-w-40"):
+                            ui.label("📦 数据源").classes("text-sm text-gray-500")
+                            ui.label("Tushare").classes("text-xl font-bold mt-1")
+                            ui.label("A 股全市场日线").classes("text-xs text-gray-400")
+
+                    # 基本面数据明细
+                    fundamentals = local_stats.get("fundamentals", {})
+                    if fundamentals:
+                        ui.label("基本面数据").classes(
+                            "font-medium text-gray-600 dark:text-gray-300 mt-2 mb-2"
+                        )
+
+                        fund_rows = []
+                        for api_name, info in fundamentals.items():
+                            fund_rows.append(
+                                {
+                                    "id": api_name,
+                                    "type": api_name,
+                                    "files": str(info.get("file_count", 0)),
+                                    "size": f"{info.get('size_mb', 0):.1f} MB",
+                                }
+                            )
+
+                        if fund_rows:
+                            columns = [
+                                {
+                                    "name": "type",
+                                    "label": "数据类型",
+                                    "field": "type",
+                                    "align": "left",
+                                },
+                                {
+                                    "name": "files",
+                                    "label": "文件数",
+                                    "field": "files",
+                                    "align": "right",
+                                },
+                                {
+                                    "name": "size",
+                                    "label": "磁盘大小",
+                                    "field": "size",
+                                    "align": "right",
+                                },
+                            ]
+                            ui.table(
+                                columns=columns,
+                                rows=fund_rows,
+                                row_key="id",
+                            ).classes("w-full").props("dense flat bordered")
+                    else:
+                        ui.label("暂无基本面数据").classes("text-gray-400 text-sm mt-2")
+
+                    if local_stats["stock_count"] == 0 and not fundamentals:
+                        with ui.column().classes("items-center py-6"):
+                            ui.icon("cloud_download").classes("text-4xl text-gray-300")
+                            ui.label("暂无 A 股本地数据").classes("text-gray-400 mt-2")
+                            ui.label("点击上方「开始全市场下载」按钮开始采集").classes(
+                                "text-gray-400 text-sm"
+                            )
+
+            except Exception as e:
+                stats_container.clear()
+                with stats_container:
+                    ui.label(f"⚠️ 统计失败: {e}").classes("text-yellow-600 text-sm")
+                logger.warning("a_share_stats_error", error=str(e))
+
+        refresh_btn.on_click(load_stats)
+        from services.web.utils import safe_timer as _safe_timer3
+
+        _safe_timer3(0.5, load_stats, once=True)
+
+
+def _format_eta(seconds: float) -> str:
+    """格式化 ETA 时间"""
+    if seconds < 60:
+        return f"{seconds:.0f} 秒"
+    elif seconds < 3600:
+        return f"{seconds / 60:.1f} 分钟"
+    else:
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        return f"{h}h{m:02d}m"
 
 
 # ============================================
