@@ -301,9 +301,9 @@ engine = BacktestEngine(
 现在你已经运行了第一个回测，接下来可以：
 
 1. **编写自己的策略**: 阅读 [策略开发指南](../guides/strategy_development.md)
-2. **优化参数**: 学习 [参数优化教程](parameter_optimization.md)
-3. **部署实盘**: 了解 [实盘交易指南](../guides/live_trading.md)
-4. **监控系统**: 设置 [Grafana 监控](../guides/monitoring.md)
+2. **深入了解系统**: 浏览 [使用指南](../guides/user_guide.md)
+3. **使用 Web 界面**: 参考 [Web 界面](../guides/web_ui.md)
+4. **部署到服务器**: 查看 [部署指南](../guides/deployment.md)
 
 ## 需要帮助？
 

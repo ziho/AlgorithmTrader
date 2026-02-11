@@ -482,6 +482,6 @@ docker-compose exec trader python scripts/migrate.py
 
 ## 下一步
 
-- 阅读 [实盘交易指南](live_trading.md) 了解实盘运行
-- 配置 [监控告警](monitoring.md) 确保系统稳定
-- 查看 [运维手册](operations.md) 了解日常维护
+- 阅读 [使用指南](user_guide.md) 了解核心流程
+- 查看 [Web 界面](web_ui.md) 管理回测与服务状态
+- 需要排查问题时参考 [FAQ](faq.md)

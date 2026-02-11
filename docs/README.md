@@ -1,53 +1,56 @@
 # AlgorithmTrader 文档中心
 
-欢迎来到 AlgorithmTrader 的文档中心。这里包含了从入门到深入开发的所有资料。
+本文档是项目文档的入口，按使用场景组织链接。内容以可落地为优先。
 
-> **重要**: 查看 [已知限制和功能完成度](KNOWN_LIMITATIONS.md) 了解当前开发状态。
+> 建议先阅读 [已知限制与功能完成度](KNOWN_LIMITATIONS.md) 了解当前状态。
 
-## 📚 文档导航
+## 文档导航
 
 ### 快速开始
 
-- **新手入门**: [快速开始指南](tutorials/quickstart.md) - 10分钟搭建你的第一个回测
-- **安装部署**: [部署指南](guides/deployment.md) - 完整的安装与配置说明
-- **第一个策略**: [策略教程](tutorials/first_strategy.md) - 手把手教你写策略
+- [快速开始](tutorials/quickstart.md) - 10 分钟完成第一次回测
+- [部署指南](guides/deployment.md) - 安装与上线流程
+- [第一个策略](tutorials/first_strategy.md) - 从 0 写一个策略
 
 ### 用户指南
 
-- [系统概览](guides/user_guide.md) - 完整的用户使用手册
-- [策略开发](guides/strategy_development.md) - 如何编写自己的交易策略
-- [常见问题](guides/faq.md) - FAQ 和问题排查
+- [使用指南](guides/user_guide.md) - 系统使用总览
+- [策略开发](guides/strategy_development.md) - 策略接口与最佳实践
+- [数据采集](guides/data_collection.md) - 数据获取与存储
+- [Web 界面](guides/web_ui.md) - Web 管理界面说明
+- [FAQ](guides/faq.md) - 常见问题
 
 ### 模板
 
-- [策略需求模板](templates/strategy_design_template.md) - 策略需求文档模板
-- [策略代码模板](templates/strategy_template.md) - 策略代码模板
-- [回测配置模板](templates/backtest_config_template.json) - 回测配置文件示例
-- [策略配置模板](templates/strategy_config_template.json) - 策略配置文件示例
+- [策略需求模板](templates/strategy_design_template.md)
+- [策略代码模板](templates/strategy_template.md)
+- [回测配置模板](templates/backtest_config_template.json)
+- [策略配置模板](templates/strategy_config_template.json)
 
 ### 开发文档
 
-- [项目结构](STRUCTURE.md) - 代码目录结构说明
-- [架构设计](development/architecture.md) - 系统整体架构
-- [Web与优化规划](development/phase1&2_web_optimization.md) - Web界面开发规划
-- [已知限制](KNOWN_LIMITATIONS.md) - 功能完成度与已知问题
+- [项目结构](STRUCTURE.md)
+- [架构设计](development/architecture.md)
+- [Web 与优化规划](development/phase1&2_web_optimization.md)
+- [A 股数据接入方案（初稿）](development/tushare_a_share_integration.md)
+- [已知限制](KNOWN_LIMITATIONS.md)
 
-## 🔍 按需查找
+## 按需查找
 
 | 需求 | 推荐文档 |
 |------|---------|
-| 快速了解整个系统 | [用户指南](guides/user_guide.md) |
-| 开始写策略 | [策略开发指南](guides/strategy_development.md) + [第一个策略教程](tutorials/first_strategy.md) |
-| 部署到服务器 | [部署指南](guides/deployment.md) |
-| 了解系统架构 | [架构设计](development/architecture.md) |
-| 查看功能完成度 | [已知限制](KNOWN_LIMITATIONS.md) |
+| 快速了解系统 | [使用指南](guides/user_guide.md) |
+| 编写策略 | [策略开发](guides/strategy_development.md) + [第一个策略](tutorials/first_strategy.md) |
+| 采集数据 | [数据采集](guides/data_collection.md) |
+| 部署上线 | [部署指南](guides/deployment.md) |
+| 了解架构 | [架构设计](development/architecture.md) |
+| 查看现状 | [已知限制](KNOWN_LIMITATIONS.md) |
 
-## 🆘 获取帮助
+## 获取帮助
 
-- **遇到错误**: 先查看 [常见问题](guides/faq.md)
-- **报告 Bug**: 在 [GitHub Issues](https://github.com/ziho/AlgorithmTrader/issues) 提交
-- **功能建议**: 在 GitHub Issues 中使用 `enhancement` 标签
+- 先查看 [FAQ](guides/faq.md)
+- 报告问题：GitHub Issues
 
 ---
 
-**最后更新**: 2025-02-01
+最后更新: 2026-02-11

@@ -440,5 +440,5 @@ logger.info(f"Position: {current_position}, Price: {current_price}, High: {entry
 - 尝试修改参数，观察效果
 - 添加更多过滤条件
 - 组合多个策略
-- 阅读 [参数优化教程](parameter_optimization.md)
 - 查看 [内置策略源码](../../src/strategy/examples/) 学习更多技巧
+- 阅读 [策略开发指南](../guides/strategy_development.md) 深入了解接口
