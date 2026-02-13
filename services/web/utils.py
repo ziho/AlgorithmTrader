@@ -21,7 +21,9 @@ class _SafeTimer:
 
     def __init__(self, interval: float, callback: Callable, *, once: bool = False):
         import asyncio
-        from nicegui import background_tasks, context as nicegui_context
+
+        from nicegui import background_tasks
+        from nicegui import context as nicegui_context
         from nicegui.client import Client
 
         self.interval = interval
@@ -107,6 +109,7 @@ def _wrap_safe_callback(callback: Callable, deactivate: Callable[[], None]) -> C
     async def _wrapper(*args, **kwargs):
         try:
             import asyncio
+
             result = callback(*args, **kwargs)
             if asyncio.iscoroutine(result):
                 await result

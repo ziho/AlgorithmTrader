@@ -310,7 +310,7 @@ class AppState:
                     self._services[service_name].message = "心跳超时"
                 elif hb.status in ("running", "starting"):
                     self._services[service_name].status = "healthy"
-                    self._services[service_name].message = f"运行中"
+                    self._services[service_name].message = "运行中"
                 else:
                     self._services[service_name].status = "warning"
                     self._services[service_name].message = hb.status
@@ -330,9 +330,13 @@ class AppState:
                 None,
                 lambda: subprocess.run(
                     [
-                        "docker", "ps", "-a",
-                        "--filter", "name=algorithmtrader-",
-                        "--format", "{{.Names}}\t{{.State}}\t{{.Status}}",
+                        "docker",
+                        "ps",
+                        "-a",
+                        "--filter",
+                        "name=algorithmtrader-",
+                        "--format",
+                        "{{.Names}}\t{{.State}}\t{{.Status}}",
                     ],
                     capture_output=True,
                     text=True,
@@ -340,7 +344,9 @@ class AppState:
                 ),
             )
 
-            all_containers: dict[str, tuple[str, str]] = {}  # name -> (state, status_text)
+            all_containers: dict[
+                str, tuple[str, str]
+            ] = {}  # name -> (state, status_text)
             if result.returncode == 0:
                 for line in result.stdout.strip().split("\n"):
                     if not line:

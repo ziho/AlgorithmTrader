@@ -105,6 +105,7 @@ def _render_service_status(container):
 
     # 启动异步更新
     from services.web.utils import safe_timer
+
     safe_timer(0.5, update_statuses, once=True)
 
 
@@ -185,8 +186,6 @@ def _render_data_status_overview():
                     latest_update = None
 
                     for item in data_list:
-                        symbol = item["symbol"].replace("/", "")
-                        tf = item["timeframe"]
                         range_info = item.get("range", (None, None))
                         if range_info[1]:
                             days_behind = (datetime.now(UTC) - range_info[1]).days
@@ -265,9 +264,7 @@ def _render_data_status_overview():
                                 ui.label("未检查").classes("text-gray-500 font-medium")
                             elif gaps == 0:
                                 ui.icon("check_circle").classes("text-green-500")
-                                ui.label("无缺口").classes(
-                                    "text-green-600 font-medium"
-                                )
+                                ui.label("无缺口").classes("text-green-600 font-medium")
                             else:
                                 ui.icon("warning").classes("text-yellow-500")
                                 ui.label(f"{gaps} 个缺口").classes(
@@ -285,7 +282,9 @@ def _render_data_status_overview():
                         if seconds < 0:
                             return "-"
                         if seconds >= 3600:
-                            return f"{int(seconds // 3600)}h{int(seconds % 3600 // 60)}m"
+                            return (
+                                f"{int(seconds // 3600)}h{int(seconds % 3600 // 60)}m"
+                            )
                         if seconds >= 60:
                             return f"{int(seconds // 60)}m{int(seconds % 60)}s"
                         return f"{int(seconds)}s"
@@ -309,12 +308,14 @@ def _render_data_status_overview():
                                 for idx, item in enumerate(data_list, 1):
                                     symbol = item["symbol"].replace("/", "")
                                     tf = item["timeframe"]
-                                    gaps = await asyncio.get_event_loop().run_in_executor(
-                                        None,
-                                        manager.detect_gaps,
-                                        item["exchange"],
-                                        symbol,
-                                        tf,
+                                    gaps = (
+                                        await asyncio.get_event_loop().run_in_executor(
+                                            None,
+                                            manager.detect_gaps,
+                                            item["exchange"],
+                                            symbol,
+                                            tf,
+                                        )
                                     )
                                     if gaps:
                                         gaps_total += len(gaps)
@@ -352,6 +353,7 @@ def _render_data_status_overview():
                     ui.label(f"加载失败: {e}").classes("text-red-500 text-sm")
 
         from services.web.utils import safe_timer as _safe_timer
+
         _safe_timer(0.1, load_data_status, once=True)
 
 
@@ -533,12 +535,15 @@ def _render_recent_alerts():
 
 
 def _load_recent_alerts() -> list[dict]:
-    """加载最近告警（从 JSON 结构化日志读取）"""
+    """加载最近告警（从 JSON 结构化日志读取）
+
+    改进: 对重复错误做合并计数，避免同一错误刷屏。
+    """
     import json
     from pathlib import Path
 
-    alerts: list[dict] = []
-    seen_messages: set[str] = set()  # 去重
+    # dedup_key -> alert_dict (含 count 字段)
+    seen: dict[str, dict] = {}
     log_dir = Path(__file__).parent.parent.parent.parent / "logs"
 
     # 读取所有日志文件
@@ -552,7 +557,7 @@ def _load_recent_alerts() -> list[dict]:
         try:
             lines = log_file.read_text().split("\n")[-200:]  # 最后200行
             for line in reversed(lines):
-                if len(alerts) >= 8:
+                if len(seen) >= 8:
                     break
 
                 line = line.strip()
@@ -573,12 +578,20 @@ def _load_recent_alerts() -> list[dict]:
 
                     # 构建可读消息
                     if error:
-                        # 尝试解析嵌套的 JSON 错误（如 OKX 返回）
                         try:
-                            # "okx {\"msg\":\"Invalid OK-ACCESS-KEY\",\"code\":\"50111\"}"
                             if error.startswith("okx "):
                                 inner = json.loads(error[4:])
-                                message = f"[{event}] OKX: {inner.get('msg', error)} (code: {inner.get('code', '?')})"
+                                msg_text = inner.get("msg", error)
+                                code = inner.get("code", "?")
+                                # 对已知错误给出可操作提示
+                                if code == "50101":
+                                    message = "OKX API Key 环境不匹配 — 请检查 OKX_SANDBOX 设置是否与 API Key 类型一致"
+                                elif code == "50111":
+                                    message = "OKX API Key 无效 — 请检查 .env 中的 OKX_API_KEY"
+                                else:
+                                    message = (
+                                        f"[{event}] OKX: {msg_text} (code: {code})"
+                                    )
                             else:
                                 message = f"[{event}] {error}"
                         except (json.JSONDecodeError, Exception):
@@ -588,11 +601,11 @@ def _load_recent_alerts() -> list[dict]:
                     else:
                         continue
 
-                    # 去重: 相同事件+错误只保留最新一条
-                    dedup_key = f"{event}|{error[:50]}"
-                    if dedup_key in seen_messages:
+                    # 去重: 相同事件+错误 合并计数
+                    dedup_key = f"{event}|{error[:80]}"
+                    if dedup_key in seen:
+                        seen[dedup_key]["count"] += 1
                         continue
-                    seen_messages.add(dedup_key)
 
                     # 格式化时间
                     time_str = _format_log_time(timestamp)
@@ -602,14 +615,13 @@ def _load_recent_alerts() -> list[dict]:
                         logger_name.split(".")[-1] if logger_name else log_file.stem
                     )
 
-                    alerts.append(
-                        {
-                            "level": level,
-                            "message": message[:120],
-                            "time": time_str,
-                            "source": source,
-                        }
-                    )
+                    seen[dedup_key] = {
+                        "level": level,
+                        "message": message[:120],
+                        "time": time_str,
+                        "source": source,
+                        "count": 1,
+                    }
 
                 except json.JSONDecodeError:
                     # 非 JSON 格式日志行，使用旧方式解析
@@ -623,22 +635,22 @@ def _load_recent_alerts() -> list[dict]:
                             if "]" in line
                             else line[:100]
                         )
-                        dedup_key = message[:50]
-                        if dedup_key not in seen_messages:
-                            seen_messages.add(dedup_key)
-                            alerts.append(
-                                {
-                                    "level": "error",
-                                    "message": message[:120],
-                                    "time": time_str,
-                                    "source": log_file.stem,
-                                }
-                            )
+                        dedup_key = message[:80]
+                        if dedup_key not in seen:
+                            seen[dedup_key] = {
+                                "level": "error",
+                                "message": message[:120],
+                                "time": time_str,
+                                "source": log_file.stem,
+                                "count": 1,
+                            }
+                        else:
+                            seen[dedup_key]["count"] += 1
 
         except Exception:
             pass
 
-    return alerts
+    return list(seen.values())
 
 
 def _format_log_time(timestamp: str) -> str:
@@ -694,6 +706,11 @@ def _render_alert_item(alert: dict):
                 source = alert.get("source", "")
                 if source:
                     ui.label(f"· {source}").classes("text-xs text-gray-400")
+                count = alert.get("count", 1)
+                if count > 1:
+                    ui.label(f"· 重复 {count} 次").classes(
+                        "text-xs text-orange-500 font-medium"
+                    )
 
 
 def _render_recent_backtests():

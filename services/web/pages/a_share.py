@@ -11,7 +11,8 @@ A 股数据分析页面 (A-Share / Tushare)
 """
 
 import asyncio
-from datetime import UTC, datetime
+import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from nicegui import ui
@@ -35,9 +36,9 @@ def render():
             "首次使用请先在「数据下载」标签页完成全市场日线回填。"
         ).classes("text-gray-500 text-sm")
 
-    # 顶部数据概览
+    # 顶部数据概览 (懒加载，点击才计算)
     overview_row = ui.row().classes("w-full gap-4 flex-wrap mb-2")
-    _render_quick_overview(overview_row)
+    _render_lazy_overview(overview_row)
 
     # Tab
     with ui.tabs().classes("w-full mt-2") as tabs:
@@ -65,35 +66,69 @@ def render():
 # ============================================
 
 
-def _render_quick_overview(container):
-    """快速数据概览卡片"""
+def _render_lazy_overview(container):
+    """数据概览卡片 — 默认显示占位符，点击按钮才加载"""
+    with container:
+        with ui.card().classes("card flex-1 min-w-48 p-3"):
+            ui.label("股票数量").classes("text-xs text-gray-500")
+            ui.label("-").classes("text-lg font-bold text-gray-300")
+
+        with ui.card().classes("card flex-1 min-w-48 p-3"):
+            ui.label("数据文件").classes("text-xs text-gray-500")
+            ui.label("-").classes("text-lg font-bold text-gray-300")
+
+        with ui.card().classes("card flex-1 min-w-48 p-3"):
+            ui.label("磁盘占用").classes("text-xs text-gray-500")
+            ui.label("-").classes("text-lg font-bold text-gray-300")
+
+        with ui.card().classes("card flex-1 min-w-48 p-3"):
+            ui.label("基本面数据").classes("text-xs text-gray-500")
+            ui.label("-").classes("text-lg font-bold text-gray-300")
+
+        tushare_ok = _check_tushare_available()
+        with ui.card().classes("card flex-1 min-w-48 p-3"):
+            ui.label("Tushare 状态").classes("text-xs text-gray-500")
+            if tushare_ok:
+                ui.label("✅ 已连接").classes("text-lg font-bold text-green-600")
+            else:
+                ui.label("❌ 未配置").classes("text-lg font-bold text-red-500")
+
+        calc_btn = ui.button("计算数据统计", icon="calculate").props(
+            "flat dense size=sm"
+        )
 
     async def load_overview():
         container.clear()
         with container:
-            try:
-                from src.data.fetcher.tushare_history import TushareHistoryFetcher
+            with ui.row().classes("justify-center py-2 w-full"):
+                ui.spinner("dots", size="sm")
+                ui.label("正在扫描...").classes("text-gray-400 text-sm ml-2")
 
-                fetcher = TushareHistoryFetcher(data_dir=PROJECT_ROOT / "data")
-                stats = await asyncio.get_event_loop().run_in_executor(
-                    None, fetcher.get_local_stats
-                )
-                await fetcher.close()
+        try:
+            from src.data.fetcher.tushare_history import TushareHistoryFetcher
 
-                stock_count = stats.get("stock_count", 0)
-                file_count = stats.get("file_count", 0)
-                size_mb = stats.get("total_size_mb", 0.0)
-                fund_types = len(stats.get("fundamentals", {}))
+            fetcher = TushareHistoryFetcher(data_dir=PROJECT_ROOT / "data")
+            stats = await asyncio.get_event_loop().run_in_executor(
+                None, fetcher.get_local_stats
+            )
+            await fetcher.close()
 
-                with ui.card().classes("card flex-1 min-w-36 p-3"):
+            stock_count = stats.get("stock_count", 0)
+            file_count = stats.get("file_count", 0)
+            size_mb = stats.get("total_size_mb", 0.0)
+            fund_types = len(stats.get("fundamentals", {}))
+
+            container.clear()
+            with container:
+                with ui.card().classes("card flex-1 min-w-48 p-3"):
                     ui.label("股票数量").classes("text-xs text-gray-500")
                     ui.label(f"{stock_count:,}").classes("text-lg font-bold")
 
-                with ui.card().classes("card flex-1 min-w-36 p-3"):
+                with ui.card().classes("card flex-1 min-w-48 p-3"):
                     ui.label("数据文件").classes("text-xs text-gray-500")
                     ui.label(f"{file_count:,}").classes("text-lg font-bold")
 
-                with ui.card().classes("card flex-1 min-w-36 p-3"):
+                with ui.card().classes("card flex-1 min-w-48 p-3"):
                     ui.label("磁盘占用").classes("text-xs text-gray-500")
                     if size_mb >= 1024:
                         ui.label(f"{size_mb / 1024:.2f} GB").classes(
@@ -102,25 +137,30 @@ def _render_quick_overview(container):
                     else:
                         ui.label(f"{size_mb:.1f} MB").classes("text-lg font-bold")
 
-                with ui.card().classes("card flex-1 min-w-36 p-3"):
+                with ui.card().classes("card flex-1 min-w-48 p-3"):
                     ui.label("基本面数据").classes("text-xs text-gray-500")
                     ui.label(f"{fund_types} 类").classes("text-lg font-bold")
 
                 tushare_ok = _check_tushare_available()
-                with ui.card().classes("card flex-1 min-w-36 p-3"):
+                with ui.card().classes("card flex-1 min-w-48 p-3"):
                     ui.label("Tushare 状态").classes("text-xs text-gray-500")
                     if tushare_ok:
-                        ui.label("✅ 已连接").classes("text-lg font-bold text-green-600")
+                        ui.label("✅ 已连接").classes(
+                            "text-lg font-bold text-green-600"
+                        )
                     else:
                         ui.label("❌ 未配置").classes("text-lg font-bold text-red-500")
 
-            except Exception as e:
-                with ui.card().classes("card w-full p-3"):
-                    ui.label(f"⚠️ 概览加载失败: {e}").classes("text-yellow-600 text-sm")
+                ui.button("刷新", icon="refresh", on_click=load_overview).props(
+                    "flat dense size=sm"
+                )
 
-    from services.web.utils import safe_timer
+        except Exception as e:
+            container.clear()
+            with container:
+                ui.label(f"⚠️ 概览加载失败: {e}").classes("text-yellow-600 text-sm")
 
-    safe_timer(0.3, load_overview, once=True)
+    calc_btn.on_click(load_overview)
 
 
 def _check_tushare_available() -> bool:
@@ -215,7 +255,12 @@ def _render_screening_panel():
             # 条数限制
             limit_select = (
                 ui.select(
-                    {"50": "Top 50", "100": "Top 100", "200": "Top 200", "500": "Top 500"},
+                    {
+                        "50": "Top 50",
+                        "100": "Top 100",
+                        "200": "Top 200",
+                        "500": "Top 500",
+                    },
                     value="100",
                     label="显示条数",
                 )
@@ -268,35 +313,93 @@ def _render_screening_panel():
 
                     # 构建表格
                     columns = [
-                        {"name": "rank", "label": "#", "field": "rank", "align": "center", "sortable": True},
-                        {"name": "ts_code", "label": "代码", "field": "ts_code", "align": "left", "sortable": True},
-                        {"name": "name", "label": "名称", "field": "name", "align": "left", "sortable": True},
-                        {"name": "close", "label": "收盘价", "field": "close", "align": "right", "sortable": True},
-                        {"name": "pct_chg", "label": "涨跌幅%", "field": "pct_chg", "align": "right", "sortable": True},
-                        {"name": "value", "label": _factor_label(rank_by), "field": "value", "align": "right", "sortable": True},
-                        {"name": "total_mv", "label": "总市值(亿)", "field": "total_mv", "align": "right", "sortable": True},
-                        {"name": "turnover_rate", "label": "换手率%", "field": "turnover_rate", "align": "right", "sortable": True},
-                        {"name": "pe_ttm", "label": "PE(TTM)", "field": "pe_ttm", "align": "right", "sortable": True},
+                        {
+                            "name": "rank",
+                            "label": "#",
+                            "field": "rank",
+                            "align": "center",
+                            "sortable": True,
+                        },
+                        {
+                            "name": "ts_code",
+                            "label": "代码",
+                            "field": "ts_code",
+                            "align": "left",
+                            "sortable": True,
+                        },
+                        {
+                            "name": "name",
+                            "label": "名称",
+                            "field": "name",
+                            "align": "left",
+                            "sortable": True,
+                        },
+                        {
+                            "name": "close",
+                            "label": "收盘价",
+                            "field": "close",
+                            "align": "right",
+                            "sortable": True,
+                        },
+                        {
+                            "name": "pct_chg",
+                            "label": "涨跌幅%",
+                            "field": "pct_chg",
+                            "align": "right",
+                            "sortable": True,
+                        },
+                        {
+                            "name": "value",
+                            "label": _factor_label(rank_by),
+                            "field": "value",
+                            "align": "right",
+                            "sortable": True,
+                        },
+                        {
+                            "name": "total_mv",
+                            "label": "总市值(亿)",
+                            "field": "total_mv",
+                            "align": "right",
+                            "sortable": True,
+                        },
+                        {
+                            "name": "turnover_rate",
+                            "label": "换手率%",
+                            "field": "turnover_rate",
+                            "align": "right",
+                            "sortable": True,
+                        },
+                        {
+                            "name": "pe_ttm",
+                            "label": "PE(TTM)",
+                            "field": "pe_ttm",
+                            "align": "right",
+                            "sortable": True,
+                        },
                     ]
 
-                    table = ui.table(
-                        columns=columns,
-                        rows=rows,
-                        row_key="ts_code",
-                        pagination={"rowsPerPage": 50, "sortBy": "rank"},
-                    ).classes("w-full").props("dense flat bordered")
+                    table = (
+                        ui.table(
+                            columns=columns,
+                            rows=rows,
+                            row_key="ts_code",
+                            pagination={"rowsPerPage": 50, "sortBy": "rank"},
+                        )
+                        .classes("w-full")
+                        .props("dense flat bordered")
+                    )
 
                     # 允许搜索
                     table.add_slot(
                         "top-right",
-                        '''
+                        """
                         <q-input borderless dense debounce="300" v-model="props.filter"
                                  placeholder="搜索代码/名称">
                             <template v-slot:append>
                                 <q-icon name="search" />
                             </template>
                         </q-input>
-                        ''',
+                        """,
                     )
                     table.props('filter=""')
 
@@ -378,17 +481,21 @@ def _screening_query(
             pe_ttm = row.get("pe_ttm", None)
             value = row.get(rank_by, None)
 
-            rows.append({
-                "rank": int(row["rank"]),
-                "ts_code": ts_code,
-                "name": name_map.get(ts_code, ""),
-                "close": _fmt_num(close_val, 2),
-                "pct_chg": _fmt_num(pct_chg, 2),
-                "value": _fmt_num(value, 2),
-                "total_mv": _fmt_num(total_mv / 10000 if total_mv else None, 2),  # 万→亿
-                "turnover_rate": _fmt_num(turnover_rate, 2),
-                "pe_ttm": _fmt_num(pe_ttm, 2),
-            })
+            rows.append(
+                {
+                    "rank": int(row["rank"]),
+                    "ts_code": ts_code,
+                    "name": name_map.get(ts_code, ""),
+                    "close": _fmt_num(close_val, 2),
+                    "pct_chg": _fmt_num(pct_chg, 2),
+                    "value": _fmt_num(value, 2),
+                    "total_mv": _fmt_num(
+                        total_mv / 10000 if total_mv else None, 2
+                    ),  # 万→亿
+                    "turnover_rate": _fmt_num(turnover_rate, 2),
+                    "pe_ttm": _fmt_num(pe_ttm, 2),
+                }
+            )
 
         return rows
 
@@ -433,13 +540,20 @@ def _get_stock_name_map() -> dict[str, str]:
 
     try:
         # 尝试从本地缓存文件读取
-        cache_path = PROJECT_ROOT / "data" / "parquet" / "a_tushare_meta" / "stock_basic.parquet"
+        cache_path = (
+            PROJECT_ROOT / "data" / "parquet" / "a_tushare_meta" / "stock_basic.parquet"
+        )
         if cache_path.exists():
             import pandas as pd
+
             basic_df = pd.read_parquet(cache_path)
             if "ts_code" in basic_df.columns and "name" in basic_df.columns:
                 _STOCK_NAME_CACHE = dict(
-                    zip(basic_df["ts_code"].astype(str), basic_df["name"].astype(str))
+                    zip(
+                        basic_df["ts_code"].astype(str),
+                        basic_df["name"].astype(str),
+                        strict=False,
+                    )
                 )
                 return _STOCK_NAME_CACHE
     except Exception:
@@ -459,7 +573,11 @@ async def _fetch_and_cache_stock_basic():
             if not df.empty:
                 # 缓存到内存
                 _STOCK_NAME_CACHE = dict(
-                    zip(df["ts_code"].astype(str), df["name"].astype(str))
+                    zip(
+                        df["ts_code"].astype(str),
+                        df["name"].astype(str),
+                        strict=False,
+                    )
                 )
                 # 缓存到文件
                 cache_dir = PROJECT_ROOT / "data" / "parquet" / "a_tushare_meta"
@@ -473,13 +591,17 @@ async def _fetch_and_cache_stock_basic():
 
 
 def _render_live_market_snapshot():
-    """实时市场快照 — 从 Tushare 获取最新行情概览"""
+    """实时市场快照 — 点击加载"""
     with ui.card().classes("card w-full mt-4"):
         with ui.row().classes("justify-between items-center mb-2"):
             ui.label("🏪 市场概览").classes("text-lg font-medium")
-            refresh_btn = ui.button("刷新股票列表", icon="refresh").props("flat dense")
+            refresh_btn = ui.button("加载股票列表", icon="refresh").props("flat dense")
 
         snapshot_container = ui.column().classes("w-full")
+        with snapshot_container:
+            ui.label("点击“加载股票列表”按钮获取全市场股票信息").classes(
+                "text-gray-400 text-sm"
+            )
 
         async def load_snapshot():
             snapshot_container.clear()
@@ -498,7 +620,6 @@ def _render_live_market_snapshot():
                         )
                         return
 
-                    # 统计
                     total = len(df)
                     sh_count = len(df[df["ts_code"].str.endswith(".SH")])
                     sz_count = len(df[df["ts_code"].str.endswith(".SZ")])
@@ -511,13 +632,9 @@ def _render_live_market_snapshot():
                         if bj_count > 0:
                             ui.label(f"北交所: {bj_count:,}").classes("text-gray-500")
 
-                    # 按行业分布
                     if "industry" in df.columns:
                         industry_counts = (
-                            df["industry"]
-                            .value_counts()
-                            .head(20)
-                            .reset_index()
+                            df["industry"].value_counts().head(20).reset_index()
                         )
                         industry_counts.columns = ["industry", "count"]
 
@@ -536,8 +653,18 @@ def _render_live_market_snapshot():
 
                         ui.table(
                             columns=[
-                                {"name": "industry", "label": "行业", "field": "industry", "align": "left"},
-                                {"name": "count", "label": "上市公司数", "field": "count", "align": "right"},
+                                {
+                                    "name": "industry",
+                                    "label": "行业",
+                                    "field": "industry",
+                                    "align": "left",
+                                },
+                                {
+                                    "name": "count",
+                                    "label": "上市公司数",
+                                    "field": "count",
+                                    "align": "right",
+                                },
                             ],
                             rows=ind_rows,
                             row_key="id",
@@ -549,9 +676,6 @@ def _render_live_market_snapshot():
                     ui.label(f"⚠️ 加载失败: {e}").classes("text-yellow-600 text-sm")
 
         refresh_btn.on_click(load_snapshot)
-        from services.web.utils import safe_timer
-
-        safe_timer(0.5, load_snapshot, once=True)
 
 
 # ============================================
@@ -563,9 +687,9 @@ def _render_stock_analysis_panel():
     """个股分析面板 — K 线图 + 因子"""
     with ui.card().classes("card w-full"):
         ui.label("📈 个股分析").classes("text-lg font-medium mb-2")
-        ui.label("输入股票代码查看 K 线走势与因子数据。需要先下载对应股票的日线数据。").classes(
-            "text-gray-500 text-sm mb-4"
-        )
+        ui.label(
+            "输入股票代码查看 K 线走势与因子数据。需要先下载对应股票的日线数据。"
+        ).classes("text-gray-500 text-sm mb-4")
 
         with ui.row().classes("gap-4 flex-wrap items-end"):
             ts_code_input = (
@@ -644,9 +768,9 @@ def _render_stock_analysis_panel():
                             ui.label(f"未找到 {ts_code} 的数据").classes(
                                 "text-gray-400 mt-2"
                             )
-                            ui.label(
-                                "请确认股票代码正确且已下载日线数据"
-                            ).classes("text-gray-400 text-sm")
+                            ui.label("请确认股票代码正确且已下载日线数据").classes(
+                                "text-gray-400 text-sm"
+                            )
                         return
 
                     ohlcv_data = result["ohlcv"]
@@ -661,9 +785,13 @@ def _render_stock_analysis_panel():
                                 "font-medium text-lg"
                             )
                             if "industry" in basic_info:
-                                ui.badge(basic_info["industry"]).props("color=blue outline")
+                                ui.badge(basic_info["industry"]).props(
+                                    "color=blue outline"
+                                )
                             if "market" in basic_info:
-                                ui.badge(basic_info["market"]).props("color=grey outline")
+                                ui.badge(basic_info["market"]).props(
+                                    "color=grey outline"
+                                )
 
                     # 最新价格信息
                     if len(ohlcv_data) > 0:
@@ -696,7 +824,9 @@ def _render_stock_analysis_panel():
                             ).classes("text-sm text-gray-500")
 
                     # K线图 (用 ECharts)
-                    _render_candlestick_chart(ohlcv_data, ts_code, stock_name, factor_data, factor_name)
+                    _render_candlestick_chart(
+                        ohlcv_data, ts_code, stock_name, factor_data, factor_name
+                    )
 
                     # 数据统计
                     _render_stock_data_stats(ohlcv_data, ts_code)
@@ -753,14 +883,16 @@ def _load_stock_data(
         else:
             date_str = str(ts)[:10]
 
-        ohlcv_list.append({
-            "date": date_str,
-            "open": float(row["open"]),
-            "high": float(row["high"]),
-            "low": float(row["low"]),
-            "close": float(row["close"]),
-            "volume": float(row["volume"]),
-        })
+        ohlcv_list.append(
+            {
+                "date": date_str,
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": float(row["volume"]),
+            }
+        )
 
     result: dict = {"ohlcv": ohlcv_list}
 
@@ -810,7 +942,11 @@ def _load_stock_data(
                 factor_series = factors_df[factor_name].dropna()
                 factor_list = []
                 for idx, val in factor_series.items():
-                    date_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
+                    date_str = (
+                        idx.strftime("%Y-%m-%d")
+                        if hasattr(idx, "strftime")
+                        else str(idx)[:10]
+                    )
                     factor_list.append({"date": date_str, "value": float(val)})
                 result["factor"] = factor_list
         except Exception as e:
@@ -819,44 +955,118 @@ def _load_stock_data(
     return result
 
 
-def _render_candlestick_chart(ohlcv_data, ts_code, stock_name, factor_data, factor_name):
-    """渲染 K 线图 (ECharts via Highcharts-style ui.echart)"""
+def _render_candlestick_chart(
+    ohlcv_data, ts_code, stock_name, factor_data, factor_name
+):
+    """渲染 K 线图 + 成交量 + MACD + 可选因子 (ECharts)"""
     if not ohlcv_data:
         ui.label("无数据可显示").classes("text-gray-400")
         return
 
-    dates = [d["date"] for d in ohlcv_data]
-    candlestick_values = [[d["open"], d["close"], d["low"], d["high"]] for d in ohlcv_data]
-    volumes = [d["volume"] for d in ohlcv_data]
+    has_factor = bool(factor_data) and factor_name != "none"
 
-    # 计算 MA
+    dates = [d["date"] for d in ohlcv_data]
+    candlestick_values = [
+        [d["open"], d["close"], d["low"], d["high"]] for d in ohlcv_data
+    ]
+    volumes = [d["volume"] for d in ohlcv_data]
     closes = [d["close"] for d in ohlcv_data]
+
+    # MA 均线
     ma5 = _calc_ma(closes, 5)
-    ma20 = _calc_ma(closes, 20)
+    ma30 = _calc_ma(closes, 30)
     ma60 = _calc_ma(closes, 60)
 
+    # MACD
+    dif, dea, macd_hist = _calc_macd(closes)
+    macd_bar_colors = [
+        "#ef4444" if (v is not None and v >= 0) else "#22c55e" for v in macd_hist
+    ]
+
     # 涨跌颜色 (中国标准: 红涨绿跌)
-    vol_colors = []
-    for d in ohlcv_data:
-        vol_colors.append("#ef4444" if d["close"] >= d["open"] else "#22c55e")
-
-    # Grid 和 axes 设置
-    grid = [
-        {"left": "8%", "right": "3%", "top": "12%", "height": "45%"},
-        {"left": "8%", "right": "3%", "top": "62%", "height": "13%"},
+    vol_colors = [
+        "#ef4444" if d["close"] >= d["open"] else "#22c55e" for d in ohlcv_data
     ]
 
+    # ── Grid 布局 ──
+    if has_factor:
+        # 4 面板: K线 + Vol + MACD + 因子
+        grid = [
+            {"left": "8%", "right": "3%", "top": "10%", "height": "30%"},
+            {"left": "8%", "right": "3%", "top": "44%", "height": "8%"},
+            {"left": "8%", "right": "3%", "top": "56%", "height": "10%"},
+            {"left": "8%", "right": "3%", "top": "70%", "height": "12%"},
+        ]
+        chart_height = "720px"
+    else:
+        # 3 面板: K线 + Vol + MACD
+        grid = [
+            {"left": "8%", "right": "3%", "top": "10%", "height": "40%"},
+            {"left": "8%", "right": "3%", "top": "54%", "height": "10%"},
+            {"left": "8%", "right": "3%", "top": "68%", "height": "12%"},
+        ]
+        chart_height = "650px"
+
+    # ── X / Y 轴 ──
+    # Grid 0: K线
     x_axis = [
-        {"type": "category", "data": dates, "gridIndex": 0, "axisLabel": {"show": False}, "boundaryGap": False},
-        {"type": "category", "data": dates, "gridIndex": 1, "boundaryGap": False},
+        {
+            "type": "category",
+            "data": dates,
+            "gridIndex": 0,
+            "axisLabel": {"show": False},
+            "axisTick": {"show": False},
+            "boundaryGap": False,
+        },
     ]
-
     y_axis = [
         {"type": "value", "gridIndex": 0, "scale": True, "splitArea": {"show": True}},
-        {"type": "value", "gridIndex": 1, "scale": True, "splitNumber": 2,
-         "axisLabel": {"show": False}, "splitLine": {"show": False}},
     ]
 
+    # Grid 1: 成交量
+    x_axis.append(
+        {
+            "type": "category",
+            "data": dates,
+            "gridIndex": 1,
+            "axisLabel": {"show": False},
+            "axisTick": {"show": False},
+            "boundaryGap": False,
+        }
+    )
+    y_axis.append(
+        {
+            "type": "value",
+            "gridIndex": 1,
+            "scale": True,
+            "splitNumber": 2,
+            "axisLabel": {"show": False},
+            "splitLine": {"show": False},
+        }
+    )
+
+    # Grid 2: MACD
+    macd_x_show = not has_factor  # 有因子时隐藏 MACD 的 x 轴标签
+    x_axis.append(
+        {
+            "type": "category",
+            "data": dates,
+            "gridIndex": 2,
+            "axisLabel": {"show": macd_x_show},
+            "boundaryGap": False,
+        }
+    )
+    y_axis.append(
+        {
+            "type": "value",
+            "gridIndex": 2,
+            "scale": True,
+            "splitNumber": 2,
+            "axisLabel": {"fontSize": 10},
+        }
+    )
+
+    # ── Series ──
     series = [
         {
             "name": "K线",
@@ -865,8 +1075,8 @@ def _render_candlestick_chart(ohlcv_data, ts_code, stock_name, factor_data, fact
             "xAxisIndex": 0,
             "yAxisIndex": 0,
             "itemStyle": {
-                "color": "#ef4444",       # 阳线红
-                "color0": "#22c55e",      # 阴线绿
+                "color": "#ef4444",
+                "color0": "#22c55e",
                 "borderColor": "#ef4444",
                 "borderColor0": "#22c55e",
             },
@@ -882,9 +1092,9 @@ def _render_candlestick_chart(ohlcv_data, ts_code, stock_name, factor_data, fact
             "symbol": "none",
         },
         {
-            "name": "MA20",
+            "name": "MA30",
             "type": "line",
-            "data": ma20,
+            "data": ma30,
             "xAxisIndex": 0,
             "yAxisIndex": 0,
             "smooth": True,
@@ -906,68 +1116,122 @@ def _render_candlestick_chart(ohlcv_data, ts_code, stock_name, factor_data, fact
             "type": "bar",
             "data": [
                 {"value": v, "itemStyle": {"color": c}}
-                for v, c in zip(volumes, vol_colors)
+                for v, c in zip(volumes, vol_colors, strict=False)
             ],
             "xAxisIndex": 1,
             "yAxisIndex": 1,
         },
-    ]
-
-    # 因子图 (第三区域)
-    if factor_data and factor_name != "none":
-        grid.append(
-            {"left": "8%", "right": "3%", "top": "78%", "height": "15%"}
-        )
-        x_axis.append(
-            {"type": "category", "data": dates, "gridIndex": 2, "boundaryGap": False}
-        )
-        y_axis.append(
-            {"type": "value", "gridIndex": 2, "scale": True, "splitNumber": 2}
-        )
-
-        # 对齐因子数据到K线日期
-        factor_map = {fd["date"]: fd["value"] for fd in factor_data}
-        factor_aligned = [factor_map.get(d, None) for d in dates]
-
-        series.append({
-            "name": _factor_label(factor_name),
+        # MACD DIF 线
+        {
+            "name": "DIF",
             "type": "line",
-            "data": factor_aligned,
+            "data": dif,
             "xAxisIndex": 2,
             "yAxisIndex": 2,
             "smooth": True,
-            "lineStyle": {"width": 1.5, "color": "#f59e0b"},
-            "areaStyle": {"color": "rgba(245, 158, 11, 0.1)"},
+            "lineStyle": {"width": 1, "color": "#2563eb"},
             "symbol": "none",
-        })
-        # 调整高度
-        grid[0]["height"] = "38%"
-        grid[1]["top"] = "55%"
-        grid[1]["height"] = "10%"
-        grid[2]["top"] = "68%"
+        },
+        # MACD DEA 线
+        {
+            "name": "DEA",
+            "type": "line",
+            "data": dea,
+            "xAxisIndex": 2,
+            "yAxisIndex": 2,
+            "smooth": True,
+            "lineStyle": {"width": 1, "color": "#f59e0b"},
+            "symbol": "none",
+        },
+        # MACD 柱状图
+        {
+            "name": "MACD",
+            "type": "bar",
+            "data": [
+                {"value": v, "itemStyle": {"color": c}}
+                for v, c in zip(macd_hist, macd_bar_colors, strict=False)
+            ],
+            "xAxisIndex": 2,
+            "yAxisIndex": 2,
+        },
+    ]
+
+    # ── 因子面板 (Grid 3, 可选) ──
+    legend_extra = ["DIF", "DEA", "MACD"]
+    if has_factor:
+        x_axis.append(
+            {
+                "type": "category",
+                "data": dates,
+                "gridIndex": 3,
+                "boundaryGap": False,
+            }
+        )
+        y_axis.append(
+            {
+                "type": "value",
+                "gridIndex": 3,
+                "scale": True,
+                "splitNumber": 2,
+                "axisLabel": {"fontSize": 10},
+            }
+        )
+
+        factor_map = {fd["date"]: fd["value"] for fd in factor_data}
+        factor_aligned = [factor_map.get(d) for d in dates]
+
+        fl = _factor_label(factor_name)
+        series.append(
+            {
+                "name": fl,
+                "type": "line",
+                "data": factor_aligned,
+                "xAxisIndex": 3,
+                "yAxisIndex": 3,
+                "smooth": True,
+                "lineStyle": {"width": 1.5, "color": "#8b5cf6"},
+                "areaStyle": {"color": "rgba(139, 92, 246, 0.1)"},
+                "symbol": "none",
+            }
+        )
+        legend_extra.append(fl)
 
     option = {
-        "title": {"text": f"{ts_code} {stock_name}", "left": "center", "textStyle": {"fontSize": 14}},
+        "title": {
+            "text": f"{ts_code} {stock_name}",
+            "left": "left",
+            "textStyle": {"fontSize": 14},
+        },
         "tooltip": {
             "trigger": "axis",
             "axisPointer": {"type": "cross"},
         },
         "legend": {
-            "data": ["MA5", "MA20", "MA60"] + ([_factor_label(factor_name)] if factor_data else []),
-            "top": "3%",
-            "textStyle": {"fontSize": 11},
+            "data": ["MA5", "MA30", "MA60"] + legend_extra,
+            "top": "2%",
+            "textStyle": {"fontSize": 10},
+            "itemGap": 8,
         },
         "grid": grid,
         "xAxis": x_axis,
         "yAxis": y_axis,
         "dataZoom": [
-            {"type": "inside", "xAxisIndex": list(range(len(x_axis))), "start": max(0, 100 - 3000 / max(len(dates), 1) * 100), "end": 100},
-            {"type": "slider", "xAxisIndex": list(range(len(x_axis))), "bottom": "1%"},
+            {
+                "type": "inside",
+                "xAxisIndex": list(range(len(x_axis))),
+                "start": max(0, 100 - 3000 / max(len(dates), 1) * 100),
+                "end": 100,
+            },
+            {
+                "type": "slider",
+                "xAxisIndex": list(range(len(x_axis))),
+                "bottom": "1%",
+            },
         ],
         "series": series,
     }
 
-    ui.echart(option).classes("w-full").style("height: 600px")
+    ui.echart(option).classes("w-full").style(f"height: {chart_height}")
 
 
 def _render_stock_data_stats(ohlcv_data, ts_code):
@@ -982,7 +1246,9 @@ def _render_stock_data_stats(ohlcv_data, ts_code):
     with ui.card().classes("card w-full mt-4 p-4"):
         ui.label("📊 数据摘要").classes("font-medium mb-2")
         with ui.row().classes("gap-6 flex-wrap"):
-            ui.label(f"日期范围: {ohlcv_data[0]['date']} ~ {ohlcv_data[-1]['date']}").classes("text-sm text-gray-600")
+            ui.label(
+                f"日期范围: {ohlcv_data[0]['date']} ~ {ohlcv_data[-1]['date']}"
+            ).classes("text-sm text-gray-600")
             ui.label(f"总交易日: {len(ohlcv_data)}").classes("text-sm text-gray-600")
             ui.label(f"最高: ¥{max(highs):.2f}").classes("text-sm text-red-500")
             ui.label(f"最低: ¥{min(lows):.2f}").classes("text-sm text-green-500")
@@ -998,9 +1264,61 @@ def _calc_ma(values: list, period: int) -> list:
         if i < period - 1:
             result.append(None)
         else:
-            avg = sum(values[i - period + 1: i + 1]) / period
+            avg = sum(values[i - period + 1 : i + 1]) / period
             result.append(round(avg, 2))
     return result
+
+
+def _calc_ema(values: list, period: int) -> list:
+    """计算指数移动平均线 (EMA)"""
+    result = [None] * len(values)
+    if len(values) < period:
+        return result
+    # 第一个 EMA 取 SMA
+    sma = sum(values[:period]) / period
+    result[period - 1] = sma
+    multiplier = 2.0 / (period + 1)
+    for i in range(period, len(values)):
+        result[i] = (values[i] - result[i - 1]) * multiplier + result[i - 1]
+    return result
+
+
+def _calc_macd(
+    closes: list, fast: int = 12, slow: int = 26, signal: int = 9
+) -> tuple[list, list, list]:
+    """计算 MACD 指标 (DIF, DEA, 柱状图)"""
+    ema_fast = _calc_ema(closes, fast)
+    ema_slow = _calc_ema(closes, slow)
+
+    # DIF = EMA(fast) - EMA(slow)
+    dif = []
+    for i in range(len(closes)):
+        if ema_fast[i] is not None and ema_slow[i] is not None:
+            dif.append(round(ema_fast[i] - ema_slow[i], 4))
+        else:
+            dif.append(None)
+
+    # DEA = EMA(DIF, signal)
+    # 从第一个非 None 的 DIF 开始计算
+    first_valid = next((i for i, v in enumerate(dif) if v is not None), None)
+    dea = [None] * len(closes)
+    if first_valid is not None:
+        valid_dif = [v for v in dif[first_valid:] if v is not None]
+        if len(valid_dif) >= signal:
+            ema_sig = _calc_ema(valid_dif, signal)
+            for j, val in enumerate(ema_sig):
+                if val is not None:
+                    dea[first_valid + j] = round(val, 4)
+
+    # MACD 柱 = 2 * (DIF - DEA)
+    histogram = []
+    for i in range(len(closes)):
+        if dif[i] is not None and dea[i] is not None:
+            histogram.append(round(2 * (dif[i] - dea[i]), 4))
+        else:
+            histogram.append(None)
+
+    return dif, dea, histogram
 
 
 # ============================================
@@ -1009,14 +1327,113 @@ def _calc_ma(values: list, period: int) -> list:
 
 
 def _render_download_panel():
-    """数据下载面板"""
+    """数据下载面板 — 含增量更新和数据缺口检查"""
     import os
 
+    # ─── 数据缺口检查 ───
+    with ui.card().classes("card w-full"):
+        ui.label("🔍 数据状态检查").classes("text-lg font-medium mb-2")
+        ui.label("检查各类数据的下载进度，发现缺口后可一键增量补齐。").classes(
+            "text-gray-500 text-sm mb-4"
+        )
+
+        gap_container = ui.column().classes("w-full")
+        with gap_container:
+            ui.label("点击下方按钮检查数据状态").classes("text-gray-400 text-sm")
+
+        gap_check_btn = ui.button("检查数据缺口", icon="fact_check").props(
+            "color=primary"
+        )
+
+        async def check_gaps():
+            gap_container.clear()
+            with gap_container:
+                with ui.row().classes("justify-center py-3"):
+                    ui.spinner("dots")
+                    ui.label("正在检查...").classes("text-gray-400 ml-2")
+
+            try:
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: _get_data_status(PROJECT_ROOT / "data")
+                )
+
+                gap_container.clear()
+                with gap_container:
+                    today_str = datetime.now().strftime("%Y%m%d")
+
+                    for tf_key, info in result.items():
+                        name_map = {
+                            "1d": "① 日线 OHLCV (daily)",
+                            "daily_basic": "② 每日指标 (daily_basic)",
+                            "adj_factor": "③ 复权因子 (adj_factor)",
+                        }
+                        name = name_map.get(tf_key, tf_key)
+
+                        with ui.card().classes("w-full p-3 mb-2"):
+                            with ui.row().classes("items-center gap-3"):
+                                if info["completed_days"] == 0:
+                                    ui.icon("cancel").classes("text-red-400")
+                                    ui.label(f"{name}").classes("font-medium")
+                                    ui.label("未下载").classes("text-red-500 text-sm")
+                                elif (
+                                    info["last_date"] and info["last_date"] < today_str
+                                ):
+                                    ui.icon("warning").classes("text-yellow-500")
+                                    ui.label(f"{name}").classes("font-medium")
+                                    ui.label(
+                                        f"已下载到 {info['last_date']}"
+                                        f" · {info['completed_days']:,} 交易日"
+                                    ).classes("text-gray-500 text-sm")
+                                    if info["failed_days"] > 0:
+                                        ui.label(
+                                            f"· {info['failed_days']} 失败"
+                                        ).classes("text-red-400 text-sm")
+                                    ui.label(f"→ 需更新到 {today_str}").classes(
+                                        "text-yellow-600 text-sm"
+                                    )
+                                else:
+                                    ui.icon("check_circle").classes("text-green-500")
+                                    ui.label(f"{name}").classes("font-medium")
+                                    ui.label(
+                                        f"✅ 已是最新 · {info['completed_days']:,} 交易日"
+                                    ).classes("text-green-600 text-sm")
+
+                    # CLI 提示
+                    with ui.row().classes(
+                        "gap-2 items-center mt-4 bg-gray-50 dark:bg-gray-800 p-3 rounded"
+                    ):
+                        ui.icon("terminal").classes("text-gray-500 text-sm")
+                        ui.label("💡 也可使用命令行下载 (更快、支持增量)：").classes(
+                            "text-xs text-gray-600 dark:text-gray-300"
+                        )
+                    with ui.column().classes(
+                        "bg-gray-50 dark:bg-gray-800 px-3 pb-3 rounded"
+                    ):
+                        ui.label(
+                            "python scripts/backfill_a_share.py daily_basic --incremental"
+                        ).classes("text-xs font-mono text-gray-600 dark:text-gray-300")
+                        ui.label(
+                            "python scripts/backfill_a_share.py adj_factor --incremental"
+                        ).classes("text-xs font-mono text-gray-600 dark:text-gray-300")
+                        ui.label("python scripts/backfill_a_share.py status").classes(
+                            "text-xs font-mono text-gray-600 dark:text-gray-300"
+                        )
+
+            except Exception as e:
+                gap_container.clear()
+                with gap_container:
+                    ui.label(f"⚠️ 检查失败: {e}").classes("text-yellow-600 text-sm")
+
+        gap_check_btn.on_click(check_gaps)
+
+    ui.separator().classes("my-4")
+
+    # ─── 下载面板 ───
     with ui.card().classes("card w-full"):
         ui.label("🇨🇳 A 股全市场数据下载").classes("text-lg font-medium mb-2")
         ui.label(
             "使用 Tushare 数据源下载全市场数据。支持日线 OHLCV、每日指标(daily_basic)、复权因子(adj_factor)。"
-            "下载后自动存储为 Parquet 格式，支持断点续传。"
+            "下载后自动存储为 Parquet 格式，支持断点续传和增量更新。"
         ).classes("text-gray-500 text-sm mb-4")
 
         # 提示
@@ -1026,7 +1443,7 @@ def _render_download_panel():
             ui.icon("lightbulb").classes("text-blue-500 text-sm")
             ui.label(
                 "推荐下载顺序: ① daily (日线数据) → ② daily_basic (每日指标) → ③ adj_factor (复权因子)。"
-                "全市场日线约需 30-60 分钟，取决于网络和积分速率。"
+                "支持断点续传，中断后重新开始会自动跳过已完成的交易日。"
             ).classes("text-xs text-blue-600 dark:text-blue-300")
 
         # 参数
@@ -1062,7 +1479,9 @@ def _render_download_panel():
                         with ui.row().classes("justify-end"):
                             ui.button("确定", on_click=start_menu.close).props("flat")
                 with start_input.add_slot("append"):
-                    ui.icon("event").on("click", start_menu.open).classes("cursor-pointer")
+                    ui.icon("event").on("click", start_menu.open).classes(
+                        "cursor-pointer"
+                    )
 
             with (
                 ui.input(
@@ -1077,17 +1496,26 @@ def _render_download_panel():
                         with ui.row().classes("justify-end"):
                             ui.button("确定", on_click=end_menu.close).props("flat")
                 with end_input.add_slot("append"):
-                    ui.icon("event").on("click", end_menu.open).classes("cursor-pointer")
+                    ui.icon("event").on("click", end_menu.open).classes(
+                        "cursor-pointer"
+                    )
 
         # 进度
-        progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full mt-4")
+        progress_bar = ui.linear_progress(value=0, show_value=False).classes(
+            "w-full mt-4"
+        )
         progress_bar.visible = False
         progress_label = ui.label("").classes("text-sm text-gray-500 mt-1")
         progress_container = ui.column().classes("w-full mt-2")
 
         # 按钮
         with ui.row().classes("gap-4 mt-4 items-center"):
-            download_btn = ui.button("开始下载", icon="cloud_download").props("color=primary")
+            download_btn = ui.button("开始下载", icon="cloud_download").props(
+                "color=primary"
+            )
+            incremental_btn = ui.button("增量更新", icon="update").props(
+                "color=secondary outlined"
+            )
             cancel_btn = ui.button("取消", icon="cancel").props("flat color=red")
             cancel_btn.visible = False
 
@@ -1106,8 +1534,9 @@ def _render_download_panel():
                 f" · 共 {stats.total_rows:,} 条 · 失败 {stats.failed_days}"
             )
 
-        async def start_download():
+        async def _do_download(start_str: str, end_str: str, selected_type: str):
             download_btn.disable()
+            incremental_btn.disable()
             cancel_btn.visible = True
             progress_bar.visible = True
             progress_bar.value = 0
@@ -1121,19 +1550,21 @@ def _render_download_panel():
                 _fetcher_ref["fetcher"] = fetcher
                 fetcher.set_progress_callback(_on_progress)
 
-                start_str = start_input.value.replace("-", "")
-                end_str = end_input.value.replace("-", "")
-                selected_type = data_type_select.value
-
                 if selected_type == "daily":
                     progress_label.set_text("正在获取交易日历并下载日线数据...")
-                    stats = await fetcher.backfill_daily(start_date=start_str, end_date=end_str)
+                    stats = await fetcher.backfill_daily(
+                        start_date=start_str, end_date=end_str
+                    )
                 elif selected_type == "daily_basic":
                     progress_label.set_text("正在下载每日指标数据...")
-                    stats = await fetcher.backfill_daily_basic(start_date=start_str, end_date=end_str)
+                    stats = await fetcher.backfill_daily_basic(
+                        start_date=start_str, end_date=end_str
+                    )
                 elif selected_type == "adj_factor":
                     progress_label.set_text("正在下载复权因子数据...")
-                    stats = await fetcher.backfill_adj_factor(start_date=start_str, end_date=end_str)
+                    stats = await fetcher.backfill_adj_factor(
+                        start_date=start_str, end_date=end_str
+                    )
                 else:
                     progress_label.set_text("未知数据类型")
                     return
@@ -1144,15 +1575,21 @@ def _render_download_panel():
                 progress_bar.value = 1.0
                 progress_container.clear()
                 with progress_container:
-                    with ui.card().classes("bg-green-50 dark:bg-green-900/20 p-4 w-full"):
+                    with ui.card().classes(
+                        "bg-green-50 dark:bg-green-900/20 p-4 w-full"
+                    ):
                         ui.label("✅ 下载完成").classes("text-green-600 font-medium")
                         ui.label(
                             f"  完成: {stats.completed_days} 日"
                             f" · 跳过: {stats.skipped_days} 日"
                             f" · 失败: {stats.failed_days} 日"
                         ).classes("text-gray-600 text-sm")
-                        ui.label(f"  共写入 {stats.total_rows:,} 条数据").classes("text-gray-600 text-sm")
-                        ui.label(f"  耗时 {stats.elapsed_seconds:.1f} 秒").classes("text-gray-500 text-sm")
+                        ui.label(f"  共写入 {stats.total_rows:,} 条数据").classes(
+                            "text-gray-600 text-sm"
+                        )
+                        ui.label(f"  耗时 {stats.elapsed_seconds:.1f} 秒").classes(
+                            "text-gray-500 text-sm"
+                        )
 
                 progress_label.set_text("")
 
@@ -1166,8 +1603,46 @@ def _render_download_panel():
                 logger.error("a_share_download_error", error=str(e))
             finally:
                 download_btn.enable()
+                incremental_btn.enable()
                 cancel_btn.visible = False
                 progress_bar.visible = False
+
+        async def start_download():
+            start_str = start_input.value.replace("-", "")
+            end_str = end_input.value.replace("-", "")
+            selected_type = data_type_select.value
+            await _do_download(start_str, end_str, selected_type)
+
+        async def start_incremental():
+            """增量更新 — 自动从上次完成的日期开始"""
+            selected_type = data_type_select.value
+            tf_key = "1d" if selected_type == "daily" else selected_type
+            end_str = end_input.value.replace("-", "")
+
+            status = _get_data_status(PROJECT_ROOT / "data")
+            info = status.get(tf_key, {})
+            last_date = info.get("last_date")
+
+            if last_date and last_date >= end_str:
+                ui.notify("数据已是最新，无需更新", type="positive")
+                return
+
+            if last_date:
+                # 从最后完成日期的下一天开始
+                from datetime import datetime as dt_cls
+
+                last_dt = dt_cls.strptime(last_date, "%Y%m%d")
+                next_dt = last_dt + timedelta(days=1)
+                start_str = next_dt.strftime("%Y%m%d")
+                ui.notify(
+                    f"增量更新: {last_date} → {end_str}",
+                    type="info",
+                )
+            else:
+                start_str = "20180101"
+                ui.notify("首次下载，从 20180101 开始", type="info")
+
+            await _do_download(start_str, end_str, selected_type)
 
         async def cancel_download():
             fetcher = _fetcher_ref.get("fetcher")
@@ -1176,6 +1651,7 @@ def _render_download_panel():
                 ui.notify("取消请求已发送，将在当前交易日完成后停止", type="warning")
 
         download_btn.on_click(start_download)
+        incremental_btn.on_click(start_incremental)
         cancel_btn.on_click(cancel_download)
 
 
@@ -1185,13 +1661,19 @@ def _render_download_panel():
 
 
 def _render_stats_panel():
-    """本地数据统计面板"""
+    """本地数据统计面板 — 懒加载，点击按钮才开始扫描"""
     with ui.card().classes("card w-full"):
         with ui.row().classes("justify-between items-center mb-4"):
             ui.label("📦 本地 A 股数据统计").classes("text-lg font-medium")
-            refresh_btn = ui.button("刷新", icon="refresh").props("flat dense")
+            refresh_btn = ui.button("扫描本地数据", icon="search").props(
+                "color=primary"
+            )
 
         stats_container = ui.column().classes("w-full")
+        with stats_container:
+            ui.label(
+                "点击「扫描本地数据」按钮开始统计。扫描大量文件可能需要几秒钟。"
+            ).classes("text-gray-400 text-sm")
 
         async def load_stats():
             stats_container.clear()
@@ -1213,19 +1695,31 @@ def _render_stats_panel():
                 with stats_container:
                     # OHLCV
                     with ui.row().classes("gap-4 flex-wrap mb-4"):
-                        with ui.card().classes("card flex-1 min-w-40"):
+                        with ui.card().classes("card flex-1 min-w-52"):
                             ui.label("🏢 股票数量").classes("text-sm text-gray-500")
-                            ui.label(f"{local_stats['stock_count']:,}").classes("text-xl font-bold mt-1")
-                            ui.label("已下载的 A 股日线").classes("text-xs text-gray-400")
+                            ui.label(f"{local_stats['stock_count']:,}").classes(
+                                "text-xl font-bold mt-1"
+                            )
+                            ui.label("已下载的 A 股日线").classes(
+                                "text-xs text-gray-400"
+                            )
 
-                        with ui.card().classes("card flex-1 min-w-40"):
-                            ui.label("📁 Parquet 文件数").classes("text-sm text-gray-500")
-                            ui.label(f"{local_stats['file_count']:,}").classes("text-xl font-bold mt-1")
+                        with ui.card().classes("card flex-1 min-w-52"):
+                            ui.label("📁 文件数").classes("text-sm text-gray-500")
+                            ui.label(f"{local_stats['file_count']:,}").classes(
+                                "text-xl font-bold mt-1"
+                            )
                             size_mb = local_stats["total_size_mb"]
-                            size_str = f"{size_mb / 1024:.2f} GB" if size_mb >= 1024 else f"{size_mb:.1f} MB"
-                            ui.label(f"占用 {size_str}").classes("text-xs text-gray-400")
+                            size_str = (
+                                f"{size_mb / 1024:.2f} GB"
+                                if size_mb >= 1024
+                                else f"{size_mb:.1f} MB"
+                            )
+                            ui.label(f"占用 {size_str}").classes(
+                                "text-xs text-gray-400"
+                            )
 
-                        with ui.card().classes("card flex-1 min-w-40"):
+                        with ui.card().classes("card flex-1 min-w-52"):
                             ui.label("📦 数据源").classes("text-sm text-gray-500")
                             ui.label("Tushare").classes("text-xl font-bold mt-1")
                             ui.label("A 股全市场日线").classes("text-xs text-gray-400")
@@ -1233,7 +1727,9 @@ def _render_stats_panel():
                     # 基本面数据
                     fundamentals = local_stats.get("fundamentals", {})
                     if fundamentals:
-                        ui.label("基本面数据明细").classes("font-medium text-gray-600 dark:text-gray-300 mt-2 mb-2")
+                        ui.label("基本面数据明细").classes(
+                            "font-medium text-gray-600 dark:text-gray-300 mt-2 mb-2"
+                        )
 
                         fund_rows = []
                         name_map = {
@@ -1243,19 +1739,36 @@ def _render_stats_panel():
                             "fina_indicator": "财务指标",
                         }
                         for api_name, info in fundamentals.items():
-                            fund_rows.append({
-                                "id": api_name,
-                                "type": name_map.get(api_name, api_name),
-                                "files": str(info.get("file_count", 0)),
-                                "size": f"{info.get('size_mb', 0):.1f} MB",
-                            })
+                            fund_rows.append(
+                                {
+                                    "id": api_name,
+                                    "type": name_map.get(api_name, api_name),
+                                    "files": str(info.get("file_count", 0)),
+                                    "size": f"{info.get('size_mb', 0):.1f} MB",
+                                }
+                            )
 
                         if fund_rows:
                             ui.table(
                                 columns=[
-                                    {"name": "type", "label": "数据类型", "field": "type", "align": "left"},
-                                    {"name": "files", "label": "文件数", "field": "files", "align": "right"},
-                                    {"name": "size", "label": "磁盘大小", "field": "size", "align": "right"},
+                                    {
+                                        "name": "type",
+                                        "label": "数据类型",
+                                        "field": "type",
+                                        "align": "left",
+                                    },
+                                    {
+                                        "name": "files",
+                                        "label": "文件数",
+                                        "field": "files",
+                                        "align": "right",
+                                    },
+                                    {
+                                        "name": "size",
+                                        "label": "磁盘大小",
+                                        "field": "size",
+                                        "align": "right",
+                                    },
                                 ],
                                 rows=fund_rows,
                                 row_key="id",
@@ -1270,7 +1783,9 @@ def _render_stats_panel():
                         with ui.column().classes("items-center py-6"):
                             ui.icon("cloud_download").classes("text-4xl text-gray-300")
                             ui.label("暂无 A 股本地数据").classes("text-gray-400 mt-2")
-                            ui.label("请先到「数据下载」标签页开始采集").classes("text-gray-400 text-sm")
+                            ui.label("请先到「数据下载」标签页开始采集").classes(
+                                "text-gray-400 text-sm"
+                            )
 
             except Exception as e:
                 stats_container.clear()
@@ -1279,13 +1794,10 @@ def _render_stats_panel():
                 logger.warning("a_share_stats_error_in_page", error=str(e))
 
         refresh_btn.on_click(load_stats)
-        from services.web.utils import safe_timer
-
-        safe_timer(0.5, load_stats, once=True)
 
 
 def _render_sample_stocks(local_stats):
-    """展示部分已下载的股票列表"""
+    """展示已下载的股票列表（支持翻页）"""
     if local_stats["stock_count"] == 0:
         return
 
@@ -1293,48 +1805,158 @@ def _render_sample_stocks(local_stats):
     if not a_share_dir.exists():
         return
 
-    # 获取前20个股票目录
-    symbol_dirs = sorted(
-        [d.name for d in a_share_dir.iterdir() if d.is_dir() and d.name != "__pycache__"]
-    )[:20]
+    # 获取所有股票目录
+    all_symbol_dirs = sorted(
+        [
+            d.name
+            for d in a_share_dir.iterdir()
+            if d.is_dir() and d.name != "__pycache__"
+        ]
+    )
 
-    if not symbol_dirs:
+    if not all_symbol_dirs:
         return
 
-    ui.label("已下载股票 (部分)").classes("font-medium text-gray-600 dark:text-gray-300 mt-4 mb-2")
+    PAGE_SIZE = 50
+    total_stocks = len(all_symbol_dirs)
+    total_pages = max(1, (total_stocks + PAGE_SIZE - 1) // PAGE_SIZE)
+    current_page = {"value": 1}
+
+    ui.label("已下载股票").classes(
+        "font-medium text-gray-600 dark:text-gray-300 mt-4 mb-2"
+    )
 
     name_map = _get_stock_name_map()
-    sample_rows = []
-    for sd in symbol_dirs:
-        # sd 格式: 600519.SH_CNY
-        ts_code = sd.replace("_CNY", "").replace("_cny", "")
-        stock_name = name_map.get(ts_code, "")
+    table_container = ui.column().classes("w-full")
 
-        # 检查数据文件
-        stock_dir = a_share_dir / sd / "1d"
-        parquet_count = len(list(stock_dir.rglob("data.parquet"))) if stock_dir.exists() else 0
+    def render_page():
+        page = current_page["value"]
+        start = (page - 1) * PAGE_SIZE
+        end = min(start + PAGE_SIZE, total_stocks)
+        page_dirs = all_symbol_dirs[start:end]
 
-        sample_rows.append({
-            "id": ts_code,
-            "ts_code": ts_code,
-            "name": stock_name,
-            "files": str(parquet_count),
-        })
+        rows = []
+        for sd in page_dirs:
+            ts_code = sd.replace("_CNY", "").replace("_cny", "")
+            stock_name = name_map.get(ts_code, "")
+            stock_dir = a_share_dir / sd / "1d"
+            parquet_count = (
+                len(list(stock_dir.rglob("data.parquet"))) if stock_dir.exists() else 0
+            )
+            rows.append(
+                {
+                    "id": ts_code,
+                    "ts_code": ts_code,
+                    "name": stock_name,
+                    "files": str(parquet_count),
+                }
+            )
 
-    ui.table(
-        columns=[
-            {"name": "ts_code", "label": "代码", "field": "ts_code", "align": "left"},
-            {"name": "name", "label": "名称", "field": "name", "align": "left"},
-            {"name": "files", "label": "Parquet文件数", "field": "files", "align": "right"},
-        ],
-        rows=sample_rows,
-        row_key="id",
-    ).classes("w-full max-w-2xl").props("dense flat bordered")
+        table_container.clear()
+        with table_container:
+            # 分页信息
+            with ui.row().classes("w-full justify-between items-center mb-2"):
+                ui.label(
+                    f"共 {total_stocks:,} 只股票 · 第 {page}/{total_pages} 页 · 显示 {start + 1}-{end}"
+                ).classes("text-sm text-gray-500")
 
-    if local_stats["stock_count"] > 20:
-        ui.label(f"... 共 {local_stats['stock_count']:,} 只股票").classes(
-            "text-gray-400 text-sm mt-1"
-        )
+                with ui.row().classes("gap-1"):
+
+                    def go_prev():
+                        if current_page["value"] > 1:
+                            current_page["value"] -= 1
+                            render_page()
+
+                    def go_next():
+                        if current_page["value"] < total_pages:
+                            current_page["value"] += 1
+                            render_page()
+
+                    ui.button(icon="chevron_left", on_click=go_prev).props(
+                        "flat dense round size=sm"
+                    ).set_enabled(page > 1)
+
+                    ui.label(f"{page} / {total_pages}").classes(
+                        "text-sm text-gray-600 mx-2 self-center"
+                    )
+
+                    ui.button(icon="chevron_right", on_click=go_next).props(
+                        "flat dense round size=sm"
+                    ).set_enabled(page < total_pages)
+
+            ui.table(
+                columns=[
+                    {
+                        "name": "ts_code",
+                        "label": "代码",
+                        "field": "ts_code",
+                        "align": "left",
+                    },
+                    {"name": "name", "label": "名称", "field": "name", "align": "left"},
+                    {
+                        "name": "files",
+                        "label": "文件数",
+                        "field": "files",
+                        "align": "right",
+                    },
+                ],
+                rows=rows,
+                row_key="id",
+            ).classes("w-full max-w-2xl").props("dense flat bordered")
+
+    render_page()
+
+
+# ============================================
+# 数据状态查询
+# ============================================
+
+
+def _get_data_status(data_dir: Path) -> dict:
+    """查询各数据类型的下载状态 (同步，可在线程中运行)"""
+    db_path = data_dir / "fetch_checkpoint.db"
+    status = {}
+
+    if not db_path.exists():
+        for tf in ["1d", "daily_basic", "adj_factor"]:
+            status[tf] = {
+                "completed_days": 0,
+                "failed_days": 0,
+                "first_date": None,
+                "last_date": None,
+            }
+        return status
+
+    conn = sqlite3.connect(db_path)
+    try:
+        for tf in ["1d", "daily_basic", "adj_factor"]:
+            cur = conn.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END),
+                    MIN(CASE WHEN status = 'completed'
+                        THEN year * 10000 + month * 100 + day END),
+                    MAX(CASE WHEN status = 'completed'
+                        THEN year * 10000 + month * 100 + day END)
+                FROM download_progress
+                WHERE exchange = 'a_tushare'
+                  AND symbol = '__ALL__'
+                  AND timeframe = ?
+                """,
+                (tf,),
+            )
+            row = cur.fetchone()
+            status[tf] = {
+                "completed_days": row[0] or 0,
+                "failed_days": row[1] or 0,
+                "first_date": str(row[2]) if row[2] else None,
+                "last_date": str(row[3]) if row[3] else None,
+            }
+    finally:
+        conn.close()
+
+    return status
 
 
 # ============================================
@@ -1383,6 +2005,7 @@ def _fmt_num(val, decimals: int = 2) -> str:
         return "-"
     try:
         import math
+
         if math.isnan(float(val)):
             return "-"
         return f"{float(val):,.{decimals}f}"

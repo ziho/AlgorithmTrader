@@ -572,7 +572,7 @@ def _render_watchdog_settings():
 
 > 看门狗只监控实际部署运行的容器。如果你只启动了 `--profile web`，
 > 则 collector / trader / scheduler / notifier 不会被监控，也不会发送告警。
-> 
+>
 > **注意**: 看门狗会定期调用 `docker ps` 检查容器状态，在系统资源有限时可能影响性能。
 > 仅在需要自动重启和告警时才启用。
         """).classes("text-sm")
@@ -613,19 +613,7 @@ def _render_system_info():
 
         stats = []
 
-        # Parquet 数据
-        if parquet_dir.exists():
-            parquet_files = list(parquet_dir.glob("**/*.parquet"))
-            total_size = sum(f.stat().st_size for f in parquet_files)
-            if total_size > 1024 * 1024 * 1024:
-                size_str = f"{total_size / 1024 / 1024 / 1024:.2f} GB"
-            elif total_size > 0:
-                size_str = f"{total_size / 1024 / 1024:.1f} MB"
-            else:
-                size_str = "0 MB"
-            stats.append(("Parquet 文件", f"{len(parquet_files)} 个 ({size_str})"))
-
-        # 日志文件
+        # 日志文件 (轻量操作)
         log_dir = PROJECT_ROOT / "logs"
         if log_dir.exists():
             log_files = list(log_dir.glob("*.log"))
@@ -635,7 +623,7 @@ def _render_system_info():
             )
             stats.append(("日志文件", f"{len(log_files)} 个 ({log_size_str})"))
 
-        # 回测报告
+        # 回测报告 (轻量操作)
         reports_dir = PROJECT_ROOT / "reports"
         if reports_dir.exists():
             report_dirs = [d for d in reports_dir.iterdir() if d.is_dir()]
@@ -645,6 +633,36 @@ def _render_system_info():
             with ui.row().classes("gap-4 py-1"):
                 ui.label(label).classes("w-32 text-gray-500")
                 ui.label(value).classes("font-mono text-sm")
+
+        # Parquet 数据 — 异步懒加载，避免阻塞页面
+        if parquet_dir.exists():
+            parquet_row = ui.row().classes("gap-4 py-1")
+            with parquet_row:
+                ui.label("Parquet 文件").classes("w-32 text-gray-500")
+                pq_value = ui.label("加载中...").classes(
+                    "font-mono text-sm text-gray-400"
+                )
+
+            import asyncio
+
+            async def _load_parquet_stats():
+                from services.web.parquet_cache import get_parquet_cache
+
+                cache = get_parquet_cache()
+                pq_stats = await asyncio.get_event_loop().run_in_executor(
+                    None, cache.get_all_stats_fast, parquet_dir
+                )
+                file_count = pq_stats.file_count
+                size_str = pq_stats.size_str if pq_stats.total_size > 0 else ""
+                text = f"{file_count:,} 个"
+                if size_str:
+                    text += f" ({size_str})"
+                pq_value.set_text(text)
+                pq_value.classes(remove="text-gray-400")
+
+            from services.web.utils import safe_timer
+
+            safe_timer(0.3, _load_parquet_stats, once=True)
 
         ui.separator().classes("my-4")
         ui.markdown("""

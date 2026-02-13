@@ -351,7 +351,7 @@ class TushareHistoryFetcher:
         if end_date is None:
             end_date = datetime.now().strftime("%Y%m%d")
 
-        stats = TushareDownloadStats()
+        self._stats = TushareDownloadStats()
         self._cancelled = False
 
         # 获取交易日历
@@ -359,11 +359,11 @@ class TushareHistoryFetcher:
             start_date=start_date,
             end_date=end_date,
         )
-        stats.total_days = len(trade_dates)
+        self._stats.total_days = len(trade_dates)
 
         logger.info(
             f"tushare_{api_name}_backfill_start",
-            total_days=stats.total_days,
+            total_days=self._stats.total_days,
         )
 
         # 基本面数据存储目录
@@ -388,7 +388,8 @@ class TushareHistoryFetcher:
                 month=dt.month,
                 day=dt.day,
             ):
-                stats.skipped_days += 1
+                self._stats.skipped_days += 1
+                self._notify_progress()
                 continue
 
             try:
@@ -397,7 +398,7 @@ class TushareHistoryFetcher:
 
                 if not df.empty:
                     accumulated_rows.append(df)
-                    stats.total_rows += len(df)
+                    self._stats.total_rows += len(df)
 
                 # 年度切换时写入文件
                 if current_year is not None and dt.year != current_year:
@@ -407,7 +408,7 @@ class TushareHistoryFetcher:
                     accumulated_rows = []
 
                 current_year = dt.year
-                stats.completed_days += 1
+                self._stats.completed_days += 1
 
                 # 标记完成
                 self._checkpoint.mark_completed(
@@ -421,7 +422,7 @@ class TushareHistoryFetcher:
                 )
 
             except Exception as e:
-                stats.failed_days += 1
+                self._stats.failed_days += 1
                 self._checkpoint.mark_failed(
                     exchange="a_tushare",
                     symbol="__ALL__",
@@ -437,6 +438,8 @@ class TushareHistoryFetcher:
                     error=str(e),
                 )
 
+            self._notify_progress()
+
         # 刷写剩余数据
         if accumulated_rows and current_year is not None:
             self._flush_fundamentals(
@@ -445,13 +448,13 @@ class TushareHistoryFetcher:
 
         logger.info(
             f"tushare_{api_name}_backfill_complete",
-            completed=stats.completed_days,
-            skipped=stats.skipped_days,
-            failed=stats.failed_days,
-            total_rows=stats.total_rows,
+            completed=self._stats.completed_days,
+            skipped=self._stats.skipped_days,
+            failed=self._stats.failed_days,
+            total_rows=self._stats.total_rows,
         )
 
-        return stats
+        return self._stats
 
     def _flush_fundamentals(
         self,
