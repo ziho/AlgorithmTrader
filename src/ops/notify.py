@@ -211,6 +211,51 @@ class TelegramNotifier:
             logger.error("telegram_send_failed", error=str(e))
             return False
 
+    async def _send_async_oneoff(self, message: NotifyMessage) -> bool:
+        """
+        一次性发送消息 (不复用 Bot，避免 event loop 关闭后复用导致错误)
+        """
+        if not self._enabled:
+            logger.warning("telegram_not_configured")
+            return False
+
+        try:
+            from telegram import Bot
+
+            bot = Bot(token=self._bot_token)
+
+            # 限频
+            import time
+
+            now = time.time()
+            elapsed = now - self._last_send_time
+            if elapsed < self._rate_limit:
+                await asyncio.sleep(self._rate_limit - elapsed)
+
+            text = message.to_html()
+            await bot.send_message(
+                chat_id=self._chat_id,
+                text=text,
+                parse_mode="HTML",
+            )
+
+            self._last_send_time = time.time()
+
+            logger.debug(
+                "telegram_sent",
+                notify_type=message.notify_type.value,
+                level=message.level.value,
+            )
+
+            return True
+
+        except ImportError:
+            logger.error("telegram_library_not_installed")
+            return False
+        except Exception as e:
+            logger.error("telegram_send_failed", error=str(e))
+            return False
+
     def send(self, message: NotifyMessage) -> bool:
         """
         同步发送消息 (内部使用 asyncio)
@@ -231,7 +276,7 @@ class TelegramNotifier:
                 return True
             except RuntimeError:
                 # 没有事件循环，创建新的
-                return asyncio.run(self.send_async(message))
+                return asyncio.run(self._send_async_oneoff(message))
 
         except Exception as e:
             logger.error("telegram_send_error", error=str(e))
@@ -267,8 +312,10 @@ class WebhookNotifier:
         """
         settings = get_settings()
 
-        self._webhook_url = webhook_url or getattr(
-            getattr(settings, "webhook", None), "url", ""
+        self._webhook_url = (
+            webhook_url
+            if webhook_url is not None
+            else getattr(getattr(settings, "webhook", None), "url", "")
         )
         self._rate_limit = rate_limit
         self._timeout = timeout

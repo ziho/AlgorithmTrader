@@ -156,10 +156,19 @@ class OKXSwapBroker(BrokerBase):
 
         # 从配置读取或使用传入的值
         settings = get_settings()
-        self._api_key = api_key or settings.okx.api_key.get_secret_value()
-        self._api_secret = api_secret or settings.okx.api_secret.get_secret_value()
-        self._passphrase = passphrase or settings.okx.passphrase.get_secret_value()
         self._sandbox = sandbox if sandbox is not None else settings.okx.sandbox
+
+        if api_key and api_secret and passphrase:
+            self._api_key = api_key
+            self._api_secret = api_secret
+            self._passphrase = passphrase
+        else:
+            # 根据 sandbox 模式自动选择实盘/模拟盘 API Key
+            (
+                self._api_key,
+                self._api_secret,
+                self._passphrase,
+            ) = settings.okx.get_active_credentials(self._sandbox)
 
         # 合约特有配置
         self._default_leverage = default_leverage

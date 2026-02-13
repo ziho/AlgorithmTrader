@@ -186,7 +186,7 @@ def _render_data_status_overview():
                     latest_update = None
 
                     for item in data_list:
-                        range_info = item.get("range", (None, None))
+                        range_info = item.get("range") or (None, None)
                         if range_info[1]:
                             days_behind = (datetime.now(UTC) - range_info[1]).days
                             if days_behind > 1:
@@ -583,18 +583,13 @@ def _load_recent_alerts() -> list[dict]:
                                 inner = json.loads(error[4:])
                                 msg_text = inner.get("msg", error)
                                 code = inner.get("code", "?")
-                                # 对已知错误给出可操作提示
-                                if code == "50101":
-                                    message = "OKX API Key 环境不匹配 — 请检查 OKX_SANDBOX 设置是否与 API Key 类型一致"
-                                elif code == "50111":
-                                    message = "OKX API Key 无效 — 请检查 .env 中的 OKX_API_KEY"
-                                else:
-                                    message = (
-                                        f"[{event}] OKX: {msg_text} (code: {code})"
-                                    )
+                                message = _okx_code_message(code, msg_text, event)
                             else:
                                 message = f"[{event}] {error}"
-                        except (json.JSONDecodeError, Exception):
+                        except json.JSONDecodeError:
+                            # OKX 前缀但非 JSON 体 → 网络/连接类错误
+                            message = _okx_network_message(error, event)
+                        except Exception:
                             message = f"[{event}] {error}" if event else error
                     elif event:
                         message = event
@@ -861,3 +856,64 @@ def _render_notification_test():
             ).props("color=primary")
             if not webhook_url:
                 notify_btn.disable()
+
+
+# ============================================
+# OKX 告警辅助
+# ============================================
+
+# OKX API 错误码 → 用户可操作的中文提示
+# 参考: https://www.okx.com/docs-v5/zh/ (RestAPI & WebSocket)
+_OKX_ERROR_HINTS: dict[str, str] = {
+    # ── 鉴权 / API Key ──
+    "50101": "OKX API Key 环境不匹配 — 实盘与模拟盘需要各自的 Key，"
+    "请在 .env 中检查 OKX_SIM_API_KEY / OKX_SIM_API_SECRET 是否已配置",
+    "50102": "OKX 请求时间戳过期 — 服务器时间偏差超过 30s",
+    "50103": "OKX 请求头 OK-ACCESS-KEY 不能为空",
+    "50104": "OKX 请求头 OK-ACCESS-PASSPHRASE 不能为空",
+    "50105": "OKX 请求头 OK-ACCESS-PASSPHRASE 不正确",
+    "50106": "OKX 请求头 OK-ACCESS-SIGN 不能为空",
+    "50107": "OKX 请求头 OK-ACCESS-SIGN 不正确",
+    "50108": "OKX 请求头 OK-ACCESS-TIMESTAMP 不能为空",
+    "50111": "OKX API Key 无效 — 请检查 .env 中的 OKX_API_KEY / OKX_SECRET_KEY",
+    "50113": "OKX API Key 权限不足 — 当前操作需要「交易」权限",
+    "50114": "OKX API Key 权限不足 — 当前操作需要「提币」权限",
+    "50115": "OKX API 需绑定 IP 白名单后才能使用",
+    # ── WebSocket ──
+    "60001": "OKX WebSocket 登录参数错误",
+    "60005": "OKX WebSocket 登录已过期，请重新连接",
+    "60009": "OKX WebSocket 登录失败 — 请检查 API Key 与签名",
+    "60012": "OKX WebSocket 非法请求",
+    "60018": "OKX WebSocket 操作需要先登录",
+    # ── 通知 / 连接 ──
+    "64008": "OKX WebSocket 即将升级断线 — 请准备重连",
+    # ── 频率限制 ──
+    "50011": "OKX 请求频率超限 — 已被限流，请降低调用频率",
+}
+
+
+def _okx_code_message(code: str, msg_text: str, event: str) -> str:
+    """根据 OKX 错误码返回可操作提示"""
+    hint = _OKX_ERROR_HINTS.get(code)
+    if hint:
+        return hint
+    return f"[{event}] OKX: {msg_text} (code: {code})"
+
+
+def _okx_network_message(error: str, event: str) -> str:
+    """将 OKX 网络级错误转为可读消息"""
+    import re
+
+    # 匹配 "okx GET /POST https://..." 格式
+    m = re.search(r"okx\s+(GET|POST)\s+(https?://\S+)", error)
+    if m:
+        method, url = m.group(1), m.group(2)
+        # 从 URL 提取 API 路径
+        path = (
+            url.split(".com")[-1].split(".okx")[-1]
+            if ".com" in url or ".okx" in url
+            else url
+        )
+        path = path.split("?")[0]  # 去除 query string
+        return f"OKX 网络错误: {method} {path} — 请检查网络连接或 OKX 服务状态"
+    return f"[{event}] {error}" if event else error

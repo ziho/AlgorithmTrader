@@ -365,9 +365,7 @@ class HistoryFetcher:
                 _base, _quote = symbol_upper[:-3], symbol_upper[-3:]
             _sym = Symbol(exchange=Exchange.BINANCE, base=_base, quote=_quote)
             _tf = Timeframe(timeframe)
-            _path = _pq._get_partition_path(
-                _sym, _tf, datetime(year, month, 15, tzinfo=UTC)
-            )
+            _path = _pq._get_partition_path(_sym, _tf, year, month)
             if (_path / "data.parquet").exists():
                 logger.debug(
                     "month_skipped",

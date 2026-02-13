@@ -8,7 +8,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,16 +48,60 @@ class BinanceSettings(BaseSettings):
 
 
 class OKXSettings(BaseSettings):
-    """OKX 交易所配置"""
+    """OKX 交易所配置
+
+    OKX 实盘与模拟盘使用不同的 API Key。
+    实盘: OKX_API_KEY / OKX_API_SECRET / OKX_PASSPHRASE
+    模拟盘: OKX_SIM_API_KEY / OKX_SIM_API_SECRET / OKX_SIM_PASSPHRASE
+    """
 
     model_config = SettingsConfigDict(
         env_prefix="OKX_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    api_key: SecretStr = Field(default=SecretStr(""), description="OKX API Key")
-    api_secret: SecretStr = Field(default=SecretStr(""), description="OKX API Secret")
-    passphrase: SecretStr = Field(default=SecretStr(""), description="OKX Passphrase")
-    sandbox: bool = Field(default=True, description="是否使用模拟盘")
+    # --- 实盘 API Key ---
+    api_key: SecretStr = Field(default=SecretStr(""), description="OKX 实盘 API Key")
+    api_secret: SecretStr = Field(
+        default=SecretStr(""), description="OKX 实盘 API Secret"
+    )
+    passphrase: SecretStr = Field(
+        default=SecretStr(""), description="OKX 实盘 Passphrase"
+    )
+
+    # --- 模拟盘 API Key ---
+    sim_api_key: SecretStr = Field(
+        default=SecretStr(""), description="OKX 模拟盘 API Key"
+    )
+    sim_api_secret: SecretStr = Field(
+        default=SecretStr(""), description="OKX 模拟盘 API Secret"
+    )
+    sim_passphrase: SecretStr = Field(
+        default=SecretStr(""), description="OKX 模拟盘 Passphrase"
+    )
+
+    sandbox: bool = Field(
+        default=True,
+        description="是否使用模拟盘",
+        validation_alias=AliasChoices("SIMULATED_TRADING", "SANDBOX"),
+    )
+
+    def get_active_credentials(
+        self, sandbox: bool | None = None
+    ) -> tuple[str, str, str]:
+        """根据模式返回对应的 (api_key, api_secret, passphrase)"""
+        use_sandbox = sandbox if sandbox is not None else self.sandbox
+        if use_sandbox:
+            return (
+                self.sim_api_key.get_secret_value(),
+                self.sim_api_secret.get_secret_value(),
+                self.sim_passphrase.get_secret_value()
+                or self.passphrase.get_secret_value(),
+            )
+        return (
+            self.api_key.get_secret_value(),
+            self.api_secret.get_secret_value(),
+            self.passphrase.get_secret_value(),
+        )
 
 
 class IBKRSettings(BaseSettings):

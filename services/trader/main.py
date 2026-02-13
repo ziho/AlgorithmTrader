@@ -733,7 +733,7 @@ def main() -> None:
         symbols=["BTC/USDT", "ETH/USDT"],
         timeframe="15m",
         strategy_name="DualMAStrategy",
-        sandbox=True,
+        sandbox=settings.okx.sandbox,
         dry_run=settings.is_dev,  # 开发环境默认干运行
     )
 

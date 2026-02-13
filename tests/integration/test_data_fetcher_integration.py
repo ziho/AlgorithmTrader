@@ -117,7 +117,7 @@ class TestHistoryDownload:
             else:
                 year, month = now.year, now.month - 1
 
-            df, is_new = await fetcher.download_month(
+            df, is_new, _size = await fetcher.download_month(
                 symbol="BTCUSDT",
                 timeframe="1m",
                 year=year,
@@ -127,6 +127,25 @@ class TestHistoryDownload:
             if not df.empty:
                 print(f"\n下载了 {year}-{month:02d} 的 {len(df)} 条数据")
                 print(df.head())
+
+                # download_month 仅下载，需手动保存+标记 checkpoint
+                from src.core.instruments import Exchange, Symbol
+                from src.core.timeframes import Timeframe
+                from src.data.storage.parquet_store import ParquetStore
+
+                store = ParquetStore(base_path=str(temp_data_dir / "parquet"))
+                sym = Symbol(exchange=Exchange.BINANCE, base="BTC", quote="USDT")
+                tf = Timeframe("1m")
+                store.write(sym, tf, df)
+                fetcher.checkpoint.mark_completed(
+                    "binance",
+                    "BTCUSDT",
+                    "1m",
+                    year,
+                    month,
+                    rows_count=len(df),
+                    file_size=_size,
+                )
 
                 # 验证断点
                 assert fetcher.checkpoint.is_completed(
@@ -142,7 +161,10 @@ class TestHistoryDownload:
     @pytest.mark.slow
     async def test_checkpoint_resume(self, temp_data_dir):
         """测试断点续传"""
+        from src.core.instruments import Exchange, Symbol
+        from src.core.timeframes import Timeframe
         from src.data.fetcher.history import HistoryFetcher
+        from src.data.storage.parquet_store import ParquetStore
 
         # 第一次下载
         fetcher1 = HistoryFetcher(data_dir=temp_data_dir, verify_checksum=False)
@@ -154,12 +176,29 @@ class TestHistoryDownload:
             else:
                 year, month = now.year, now.month - 2
 
-            df1, is_new1 = await fetcher1.download_month("BTCUSDT", "1m", year, month)
+            df1, is_new1, _size1 = await fetcher1.download_month(
+                "BTCUSDT", "1m", year, month
+            )
 
             if df1.empty:
                 pytest.skip("No data available for this month")
 
             assert is_new1
+
+            # 保存到 parquet 并标记 checkpoint（download_month 仅下载）
+            store = ParquetStore(base_path=str(temp_data_dir / "parquet"))
+            sym = Symbol(exchange=Exchange.BINANCE, base="BTC", quote="USDT")
+            tf = Timeframe("1m")
+            store.write(sym, tf, df1)
+            fetcher1.checkpoint.mark_completed(
+                "binance",
+                "BTCUSDT",
+                "1m",
+                year,
+                month,
+                rows_count=len(df1),
+                file_size=_size1,
+            )
 
         finally:
             await fetcher1.close()
@@ -168,7 +207,7 @@ class TestHistoryDownload:
         fetcher2 = HistoryFetcher(data_dir=temp_data_dir, verify_checksum=False)
 
         try:
-            df2, is_new2 = await fetcher2.download_month(
+            df2, is_new2, _size2 = await fetcher2.download_month(
                 "BTCUSDT",
                 "1m",
                 year,
@@ -203,24 +242,33 @@ class TestDataManager:
 
     @pytest.mark.asyncio
     async def test_full_workflow(self, temp_data_dir):
-        """测试完整工作流: 下载 -> 读取 -> 聚合"""
+        """测试完整工作流: 下载 -> 保存 -> 读取 -> 聚合"""
+        from src.core.instruments import Exchange, Symbol
+        from src.core.timeframes import Timeframe
         from src.data.fetcher.history import HistoryFetcher
         from src.data.fetcher.manager import DataManager
+        from src.data.storage.parquet_store import ParquetStore
 
         # 1. 下载数据
         fetcher = HistoryFetcher(data_dir=temp_data_dir, verify_checksum=False)
 
         try:
             now = datetime.now(UTC)
-            if now.month <= 1:
-                year, month = now.year - 1, 11
+            if now.month <= 2:
+                year, month = now.year - 1, now.month + 10
             else:
                 year, month = now.year, now.month - 2
 
-            df, _ = await fetcher.download_month("BTCUSDT", "1m", year, month)
+            df, *_ = await fetcher.download_month("BTCUSDT", "1m", year, month)
 
             if df.empty:
                 pytest.skip("No data available")
+
+            # download_month 仅下载，需手动保存到 parquet
+            store = ParquetStore(base_path=str(temp_data_dir / "parquet"))
+            sym = Symbol(exchange=Exchange.BINANCE, base="BTC", quote="USDT")
+            tf = Timeframe("1m")
+            store.write(sym, tf, df)
 
         finally:
             await fetcher.close()

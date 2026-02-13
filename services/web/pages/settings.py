@@ -94,7 +94,7 @@ def _render_env_variables():
                     ("OKX_API_KEY", "API Key"),
                     ("OKX_API_SECRET", "API Secret"),
                     ("OKX_PASSPHRASE", "Passphrase"),
-                    ("OKX_SANDBOX", "模拟盘开关"),
+                    ("OKX_SIMULATED_TRADING", "模拟盘开关"),
                 ],
             },
             {

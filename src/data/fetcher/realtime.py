@@ -442,7 +442,10 @@ class RealtimeSyncer:
             return 0
 
         # 过滤只保留新数据
-        df = df[df["timestamp"] >= pd.Timestamp(start, tz="UTC")]
+        start_ts = pd.Timestamp(start)
+        if start_ts.tzinfo is None:
+            start_ts = start_ts.tz_localize("UTC")
+        df = df[df["timestamp"] >= start_ts]
 
         if df.empty:
             return 0

@@ -107,7 +107,7 @@ ENV=dev
 OKX_API_KEY=your_api_key
 OKX_API_SECRET=your_api_secret
 OKX_PASSPHRASE=your_passphrase
-OKX_SANDBOX=true  # 使用模拟盘
+OKX_SIMULATED_TRADING=true  # 使用模拟盘
 
 # InfluxDB
 INFLUXDB_URL=http://localhost:8086
@@ -651,8 +651,8 @@ logger.info("订单已提交", order_id="12345", symbol="BTC/USDT")
 
 修改 `.env` 文件：
 ```dotenv
-OKX_SANDBOX=true   # 模拟盘
-OKX_SANDBOX=false  # 实盘 (谨慎!)
+OKX_SIMULATED_TRADING=true   # 模拟盘
+OKX_SIMULATED_TRADING=false  # 实盘 (谨慎!)
 ```
 
 ### Q: 如何添加新的交易所?

@@ -222,12 +222,13 @@ class AShareFeatureEngine:
         # 确保时间排序
         ohlcv = ohlcv.sort_values("timestamp").reset_index(drop=True)
 
-        # 日期过滤
+        # 日期过滤 — 需要与 OHLCV timestamp 时区保持一致
+        ts_tz = ohlcv["timestamp"].dt.tz
         if start_date:
-            start_dt = pd.Timestamp(start_date)
+            start_dt = pd.Timestamp(start_date, tz=ts_tz)
             ohlcv = ohlcv[ohlcv["timestamp"] >= start_dt]
         if end_date:
-            end_dt = pd.Timestamp(end_date)
+            end_dt = pd.Timestamp(end_date, tz=ts_tz)
             ohlcv = ohlcv[ohlcv["timestamp"] <= end_dt]
 
         if ohlcv.empty:
