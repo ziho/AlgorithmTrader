@@ -205,10 +205,11 @@ class SimpleBreakoutStrategy(StrategyBase):
 创建 `test_breakout.py`:
 
 ```python
-from datetime import datetime
 from decimal import Decimal
 
-from src.backtest.engine import BacktestEngine
+from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.core.instruments import Exchange, Symbol
+from src.core.timeframes import Timeframe
 from src.strategy.base import StrategyConfig
 from my_strategies.breakout_strategy import SimpleBreakoutStrategy
 
@@ -221,48 +222,41 @@ config = StrategyConfig(
         "entry_period": 20,
         "exit_period": 10,
         "position_size": 1.0,
-    }
+    },
 )
 
 # 创建策略
 strategy = SimpleBreakoutStrategy(config)
 
 # 创建回测引擎
-engine = BacktestEngine(
-    strategies=[strategy],
-    start_date=datetime(2024, 1, 1),
-    end_date=datetime(2024, 12, 31),
+bt_config = BacktestConfig(
     initial_capital=Decimal("10000"),
-    data_source="parquet",
+    exchange="okx",
 )
+engine = BacktestEngine(config=bt_config)
 
 # 运行回测
 print("开始回测...")
-result = engine.run()
+result = engine.run(
+    strategy=strategy,
+    symbols=[Symbol(exchange=Exchange.OKX, base="BTC", quote="USDT")],
+    timeframe=Timeframe("1h"),
+)
 
 # 查看结果
-print("\n" + "="*50)
-print(result.summary())
-print("="*50)
-
-# 详细指标
-metrics = result.metrics
-print(f"\n总收益率: {metrics.total_return:.2%}")
-print(f"年化收益: {metrics.annual_return:.2%}")
-print(f"夏普比率: {metrics.sharpe_ratio:.2f}")
-print(f"最大回撤: {metrics.max_drawdown:.2%}")
-print(f"胜率: {metrics.win_rate:.2%}")
-print(f"交易次数: {metrics.total_trades}")
-
-# 保存报告
-result.save_report("backtest_reports/breakout_strategy.json")
+summary = result.summary
+print(f"总收益率: {summary.total_return:.2%}")
+print(f"夏普比率: {summary.sharpe_ratio:.2f}")
+print(f"最大回撤: {summary.max_drawdown:.2%}")
+print(f"胜率: {summary.win_rate:.2%}")
+print(f"交易次数: {summary.total_trades}")
 ```
 
 ## Step 7: 运行回测
 
 ```bash
 # 确保已采集数据
-python scripts/demo_collect.py --symbol BTC/USDT --days 365
+python scripts/demo_collect.py --symbols BTC/USDT --days 365
 
 # 运行回测
 python test_breakout.py
@@ -274,15 +268,11 @@ python test_breakout.py
 
 ```
 开始回测...
-Processing BTC/USDT 1h bars...
-回测完成
-
-==================================================
-策略: btc_breakout
-时间范围: 2024-01-01 to 2024-12-31
-初始资金: $10,000.00
-最终资金: $12,345.67
-==================================================
+总收益率: 12.34%
+夏普比率: 1.23
+最大回撤: -8.45%
+胜率: 48.50%
+交易次数: 42
 
 总收益率: 23.46%
 年化收益: 23.46%
@@ -304,19 +294,21 @@ Processing BTC/USDT 1h bars...
 在 Grafana 中查看：
 
 1. 访问 http://localhost:3000
-2. 打开 "Backtest Analysis" 面板
-3. 选择策略 "btc_breakout"
-4. 查看：
-   - 权益曲线
-   - 回撤曲线
-   - 交易点位
-   - 持仓分布
+2. 打开 **Backtest Results** 面板
+3. 查看权益曲线与回撤
 
 ## Step 10: 参数优化
 
 尝试不同的参数组合：
 
 ```python
+# 必要导入
+from src.backtest.engine import BacktestEngine
+from src.core.instruments import Exchange, Symbol
+from src.core.timeframes import Timeframe
+from src.strategy.base import StrategyConfig
+from my_strategies.breakout_strategy import SimpleBreakoutStrategy
+
 # 测试不同的周期
 test_configs = [
     {"entry_period": 10, "exit_period": 5},
@@ -332,12 +324,16 @@ for params in test_configs:
     )
     
     strategy = SimpleBreakoutStrategy(config)
-    engine = BacktestEngine(...)
-    result = engine.run()
-    
+    engine = BacktestEngine()
+    result = engine.run(
+        strategy=strategy,
+        symbols=[Symbol(exchange=Exchange.OKX, base="BTC", quote="USDT")],
+        timeframe=Timeframe("1h"),
+    )
+
     print(f"\n参数: {params}")
-    print(f"收益: {result.metrics.total_return:.2%}")
-    print(f"夏普: {result.metrics.sharpe_ratio:.2f}")
+    print(f"收益: {result.summary.total_return:.2%}")
+    print(f"夏普: {result.summary.sharpe_ratio:.2f}")
 ```
 
 ## 改进方向

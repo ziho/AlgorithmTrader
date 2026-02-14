@@ -1,252 +1,149 @@
 # AlgorithmTrader 数据采集使用指南
 
-## 📊 系统状态
+## 系统入口
 
-访问以下链接查看系统:
 - **Web UI**: http://localhost:8080
-- **Grafana**: http://localhost:3000 (用户名: admin, 密码: algorithmtrader123)
-- **InfluxDB**: http://localhost:8086 (用户名: admin, 密码: algorithmtrader123)
+- **Grafana**: http://localhost:3000 (admin / algorithmtrader123)
+- **InfluxDB**: http://localhost:8086
 
-## 🔄 数据采集服务
+---
 
-### 1. OKX 自动采集 (默认运行)
+## OKX 自动采集（Collector 服务）
 
-`collector` 服务会自动从 OKX 采集数据：
+`collector` 服务会定时拉取 OKX K 线并写入 Parquet + InfluxDB。
+
+默认配置：
 - 交易对: BTC/USDT, ETH/USDT
 - 时间框架: 15m, 1h
-- 数据存储: InfluxDB + Parquet
+- 写入: Parquet + InfluxDB
 
-查看状态:
+启动服务：
+
 ```bash
-docker-compose logs -f collector
+docker compose --profile trading up -d collector
 ```
 
-### 2. Binance 实时采集
+查看日志：
 
-#### 前台运行 (测试用)
 ```bash
-docker-compose exec collector python scripts/realtime_collector.py \
-    --symbols BTCUSDT,ETHUSDT \
-    --timeframes 1m,1h \
-    --exchange binance \
-    --interval 60
+docker compose logs -f collector
 ```
 
-#### 后台运行 (生产用)
+---
+
+## Binance 历史数据（批量下载）
+
+### 方式一：命令行脚本
+
 ```bash
-nohup docker-compose exec -T collector python scripts/realtime_collector.py \
-    --symbols BTCUSDT,ETHUSDT \
-    --timeframes 1m,1h \
-    --exchange binance \
-    --interval 60 > /tmp/binance_collector.log 2>&1 &
+# 下载 BTC 1m 数据（2020-至今）
+python -m scripts.fetch_history --symbol BTCUSDT --from 2020-01-01 --tf 1m
+
+# 下载多个交易对
+python -m scripts.fetch_history --symbols BTCUSDT,ETHUSDT,BNBUSDT --from 2020-01-01 --tf 1m
+
+# 强制重新下载
+python -m scripts.fetch_history --symbol BTCUSDT --tf 1m --force
 ```
 
-查看日志:
+特点：
+- 断点续传（基于 `data/fetch_checkpoint.db`）
+- 自动校验与重试
+- 月级/日级回退
+
+### 方式二：Web UI
+
+进入 `数据管理 / 历史数据下载` 页面，选择交易对与时间范围即可启动。
+
+---
+
+## Binance 实时同步
+
+`realtime_sync` 支持 WebSocket + REST 纠偏，落盘到 Parquet。
+
 ```bash
-tail -f /tmp/binance_collector.log
+# 启动实时同步（默认主流币）
+python -m scripts.realtime_sync
+
+# 自定义交易对/周期
+python -m scripts.realtime_sync --symbols BTCUSDT,ETHUSDT --timeframes 1m,1h
+
+# 禁用 WebSocket（仅 REST 轮询）
+python -m scripts.realtime_sync --no-websocket
 ```
 
-### 3. 历史数据导入
+Docker Profile：
 
-从 Binance 下载历史数据并导入:
 ```bash
-docker-compose exec collector python scripts/import_historical_data.py \
-    --symbol BTCUSDT \
-    --timeframe 1h \
-    --start 2024-01-01 \
-    --end 2025-12-31
+docker compose --profile data up -d realtime-sync
 ```
 
-## 📈 回测
+---
 
-运行 BTC 回测:
+## A 股数据回填（Tushare）
+
+支持日线 OHLCV、每日基本面与复权因子回填：
+
 ```bash
-docker-compose exec collector python scripts/run_btc_backtest.py
+# 日线 OHLCV
+python scripts/backfill_a_share.py daily --incremental
+
+# daily_basic
+python scripts/backfill_a_share.py daily_basic --incremental
+
+# adj_factor
+python scripts/backfill_a_share.py adj_factor --incremental
 ```
 
-回测报告存储在 `reports/` 目录.
+查看状态：
 
-## 🔍 数据查询
+```bash
+python scripts/backfill_a_share.py status
+```
+
+---
+
+## 数据查询
 
 ### InfluxDB CLI
+
 ```bash
-docker-compose exec influxdb influx query \
+docker compose exec influxdb influx query \
   'from(bucket:"trading") |> range(start: -1h) |> filter(fn: (r) => r["_measurement"] == "ohlcv") |> limit(n:10)' \
   --org algorithmtrader --token algorithmtrader-dev-token
 ```
 
-### 查看 Binance 数据
+### 本地 Parquet 查询
+
 ```bash
-docker-compose exec influxdb influx query \
-  'from(bucket:"trading") |> range(start: -1h) |> filter(fn: (r) => r["exchange"] == "BINANCE") |> limit(n:5)' \
-  --org algorithmtrader --token algorithmtrader-dev-token
+python -m scripts.data_query --list
+python -m scripts.data_query --symbol BTCUSDT --from 2024-01-01 --to 2024-12-31
+python -m scripts.data_query --symbol BTCUSDT --gaps
 ```
 
-## 📁 数据存储位置
+---
 
-- **Parquet 文件**: `data/parquet/{exchange}/{symbol}/{timeframe}/year={YYYY}/month={MM}/data.parquet`
-- **原始文件** (可选): `data/raw/{exchange}/{symbol}/{timeframe}/`
+## 数据存储结构
+
+- **Parquet**: `data/parquet/{exchange}/{symbol}/{timeframe}/year=YYYY/month=MM/data.parquet`
 - **断点状态**: `data/fetch_checkpoint.db`
 - **InfluxDB**: Docker volume `influxdb-data`
-- **回测报告**: `reports/`
+- **回测报告**: `reports/<run_id>/`
+
+A 股基本面数据：
+- `data/parquet/a_tushare_fundamentals/{daily_basic|adj_factor|forecast|fina_indicator}/year=YYYY/data.parquet`
 
 ---
 
-## 📥 历史数据批量下载
-
-### 1. 使用 fetch_history 脚本
-
-从 Binance Public Data (data.binance.vision) 批量下载历史 K 线:
+## 常用命令
 
 ```bash
-# 下载 BTC 1分钟数据 (2020-2026)
-docker-compose exec collector python -m scripts.fetch_history \
-    --symbol BTCUSDT --from 2020-01-01 --to 2026-02-01 --tf 1m
+# 查看服务状态
+docker compose ps
 
-# 下载多个交易对
-docker-compose exec collector python -m scripts.fetch_history \
-    --symbols BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,DOGEUSDT \
-    --from 2017-01-01 --tf 1m
-
-# 下载小时数据
-docker-compose exec collector python -m scripts.fetch_history \
-    --symbol BTCUSDT --tf 1h --from 2020-01-01
-
-# 强制重新下载 (忽略断点)
-docker-compose exec collector python -m scripts.fetch_history \
-    --symbol BTCUSDT --tf 1m --force
-
-# 指定输出目录和市场类型
-docker-compose exec collector python -m scripts.fetch_history \
-    --symbol BTCUSDT --tf 1m --dest data --market spot
-```
-
-**特点:**
-- ✅ 断点续传: 中断后重新运行自动跳过已完成月份
-- ✅ 校验和验证: 自动验证 SHA256 (如果提供)
-- ✅ 速率限制: 遵守交易所限制，自动重试
-- ✅ 日级回退: 如果月级数据不存在，自动尝试日级数据
-
-### 2. Python API
-
-```python
-import asyncio
-from datetime import datetime, UTC
-from src.data.fetcher import HistoryFetcher, get_history
-
-# 方式 1: 使用 HistoryFetcher
-async def download_data():
-    fetcher = HistoryFetcher(data_dir="./data", exchange="binance")
-    
-    async with fetcher:
-        stats = await fetcher.download_and_save(
-            symbol="BTCUSDT",
-            timeframe="1m",
-            start_date=datetime(2024, 1, 1, tzinfo=UTC),
-            end_date=datetime(2024, 12, 31, tzinfo=UTC),
-        )
-        print(f"下载完成: {stats.completed_months} 月, {stats.total_rows} 行")
-
-asyncio.run(download_data())
-
-# 方式 2: 使用 get_history 便捷函数 (已下载后读取)
-df = get_history("binance", "BTCUSDT", "2024-01-01", "2024-12-31", tf="1m")
-print(df.head())
-```
-
----
-
-## 🔄 实时数据同步
-
-### 1. 使用 realtime_sync 脚本
-
-持续同步最新 K 线数据:
-
-```bash
-# 启动实时同步 (默认 6 个主流币种)
-docker-compose exec collector python -m scripts.realtime_sync
-
-# 指定交易对和时间框架
-docker-compose exec collector python -m scripts.realtime_sync \
-    --symbols BTCUSDT,ETHUSDT --timeframes 1m,1h
-
-# 禁用 WebSocket，使用 REST 轮询
-docker-compose exec collector python -m scripts.realtime_sync --no-websocket
-
-# 后台运行
-nohup docker-compose exec -T collector python -m scripts.realtime_sync \
-    > logs/realtime_sync.log 2>&1 &
-```
-
-**特点:**
-- 📡 WebSocket 实时接收新 bar
-- 🔧 启动时自动检测并补齐缺口
-- 🔄 定期与 REST API 对比纠偏
-- 🚀 支持多交易对并发
-
-### 2. 数据查询工具
-
-```bash
-# 查看可用数据
-docker-compose exec collector python -m scripts.data_query --list
-
-# 查询特定交易对
-docker-compose exec collector python -m scripts.data_query \
-    --symbol BTCUSDT --from 2024-01-01 --to 2024-12-31
-
-# 检测缺口
-docker-compose exec collector python -m scripts.data_query --symbol BTCUSDT --gaps
-
-# 导出为 CSV
-docker-compose exec collector python -m scripts.data_query \
-    --symbol BTCUSDT --tf 1h --export btc_1h.csv
-
-# 聚合到更高周期
-docker-compose exec collector python -m scripts.data_query \
-    --symbol BTCUSDT --tf 1m --aggregate 1h
-```
-
----
-
-## 🛠️ 常用命令
-
-```bash
-# 查看所有服务状态
-docker-compose ps
-
-# 重启服务
-docker-compose restart collector
-
-# 查看日志
-docker-compose logs -f --tail 50 collector
+# 重启 Collector
+docker compose restart collector
 
 # 进入容器
-docker-compose exec collector bash
-
-# 测试 Binance 连接
-docker-compose exec collector python -c "
-import asyncio
-from src.data.connectors.binance import BinanceConnector
-from src.core.instruments import Exchange, Symbol
-from src.core.timeframes import Timeframe
-
-async def test():
-    conn = BinanceConnector()
-    sym = Symbol(exchange=Exchange.BINANCE, base='BTC', quote='USDT')
-    df = await conn.fetch_ohlcv(symbol=sym, timeframe=Timeframe('1h'), limit=5)
-    print(df)
-    await conn.close()
-
-asyncio.run(test())
-"
+docker compose exec collector bash
 ```
-
-## 📊 Grafana Dashboards
-
-访问 http://localhost:3000 查看:
-1. **Data Monitor** - K线数据和交易对价格
-2. **Trading Monitor** - 交易监控
-3. **Risk Monitor** - 风险指标
-4. **Backtest Results** - 回测结果
-
-选择时间范围为 "Last 7 days" 或更长来查看历史数据。

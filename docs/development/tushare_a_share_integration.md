@@ -1,6 +1,6 @@
 # Tushare A股数据接入方案（初稿）
 
-> **状态**：初稿 / 待讨论  
+> **状态**：初稿 / 待讨论（部分内容已在代码中落地，本文保留作为历史方案记录）  
 > **日期**：2026-02-10  
 > **参考**：`third-party/crazy_big_A/kunup_composite_factor_select.ipynb`
 
@@ -8,7 +8,7 @@
 
 ## 1. 背景
 
-当前 AlgorithmTrader 支持 Binance / OKX 两个加密货币交易所。架构上已预留了 `AssetType.STOCK`、`Exchange.IBKR` 等扩展点，但尚未有 A 股数据的实际实现。
+当前 AlgorithmTrader 已实现 Binance/OKX 数据、Tushare A 股日线与基本面回填、A 股因子与回测规则。`Exchange.IBKR` 等扩展点仍为占位实现。
 
 `kunup_composite_factor_select.ipynb` 展示了一套基于 Tushare Pro API 的复合因子选股流程：
 - 使用 `pro.daily()` / `pro.daily_basic()` / `pro.forecast()` 逐日拉取数据
